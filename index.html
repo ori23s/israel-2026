@@ -1124,6 +1124,9 @@ button.compare-state-only{cursor:pointer}
 .checker-who strong{margin-right:4px}
 .checker-inference{display:block;width:100%;font-size:11.5px;color:var(--muted);margin-top:4px}
 .checker-chip.small{padding:8px 11px;font-size:12px;min-height:36px}
+/* Inferred parties are chips too, in the inference register rather than the stated one. */
+.checker-chip.small.inferred{border-color:var(--read-line);background:var(--read-bg);color:var(--read-ink)}
+.checker-chip.small.inferred:hover{border-color:var(--read-rule)}
 .checker-resume{line-height:1.6}
 .checker-resume-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:10px}
 .checker-resume-actions button{min-height:40px}
@@ -1161,6 +1164,10 @@ button.compare-state-only{cursor:pointer}
 .checker-cmp-body{grid-column:1/-1}
 .checker-cmp-body p{margin:4px 0;font-size:14px;line-height:1.55}
 .checker-cmp-body ul{margin:4px 0;padding-left:18px}
+/* Each comparison row opens that party's position on that issue, in place. */
+.checker-cmp-open{margin-top:9px;border:0;background:transparent;padding:6px 0;min-height:34px;
+  font:inherit;font-size:12.5px;font-weight:800;color:var(--blue);cursor:pointer;text-align:left}
+.checker-cmp-open:hover{text-decoration:underline}
 .checker-cmp-body li{font-size:14px;line-height:1.55;margin:3px 0}
 .checker-objections{border:1px solid var(--line);background:#fff;border-radius:14px;margin:12px 0}
 .checker-objections>summary{padding:14px 16px;cursor:pointer;font-weight:800;font-size:13.5px;min-height:44px}
@@ -29314,7 +29321,6 @@ function renderPollsAndBlocs(){
   return `${renderPollSelector()}
     ${pollAnchorNote()}
     ${renderPollComparison()}
-    ${renderBlocRangePanel()}
     <div class="poll-meta">
       <div><strong>${esc(poll.pollster)}</strong><span>${esc(src.publisher||"")}</span></div>
       <div><strong>${esc(researchDateLabel(poll.effectiveAsOf||src.publishedAt))}</strong><span>Poll date</span></div>
@@ -31663,11 +31669,12 @@ function checkerChallengeBlock(q,o,heading){
     <details class="checker-whobox"><summary>${o.readerOnly?"Why no party is listed here":"Who else holds this position"}</summary><div class="detail">
       ${o.readerOnly?`<p class="checker-who"><strong>No party is listed, and none should be.</strong> <span class="checker-inference">This answer is about how you weigh the question, not a policy a party could campaign on. The lists below are about the question itself.</span></p>`
         :live.length?`<p class="checker-who"><strong>Parties whose recorded position this is:</strong></p>
-        <div class="checker-chips">${live.map(p=>`<button class="checker-chip small" onclick="goParty(${partyIndexById(p)})">${esc(partyName(p))}</button>`).join("")}</div>
-        <p class="checker-inference">The guide's reading of their recorded positions — open any of them and check it.</p>`
+        <div class="checker-chips">${live.map(p=>`<button class="checker-chip small" onclick="openIssuePartyDossier('${esc(p)}','${esc(q.issueId)}',false)">${esc(partyName(p))}</button>`).join("")}</div>
+        <p class="checker-inference">The guide's reading of their recorded positions — click on any of them to see the position, the record against it and the sources.</p>`
         :(o.inferred||[]).length?`<p class="checker-who"><strong>No party states this outright.</strong> <span class="checker-inference">Where the guide reads it into a party's conduct, it says so below.</span></p>`
         :`<p class="checker-who"><strong>No party in this election campaigns on this.</strong> <span class="checker-inference">A finding about your options, not about your view.</span></p>`}
-      ${o.inferred&&o.inferred.length?`<p class="checker-who checker-inferred"><strong>Inferred, not stated:</strong> ${o.inferred.filter(p=>PARTY_BY_ID.has(p)).map(p=>esc(partyName(p))).join(", ")}.</p>
+      ${o.inferred&&o.inferred.length?`<p class="checker-who checker-inferred"><strong>Inferred, not stated:</strong></p>
+        <div class="checker-chips">${o.inferred.filter(p=>PARTY_BY_ID.has(p)).map(p=>`<button class="checker-chip small inferred" onclick="openIssuePartyDossier('${esc(p)}','${esc(q.issueId)}',false)">${esc(partyName(p))}</button>`).join("")}</div>
         <p class="checker-inference">${escBidi(o.inferredNote||"")} The guide's inference — these parties have published nothing on this question, and the reading could be wrong.</p>`:""}
       ${none.length?`<p class="checker-who"><strong>No researched position either way${o.readerOnly?" on this question":""}:</strong> ${none.map(p=>esc(partyName(p))).join(", ")}.</p>
         <p class="checker-inference">Different from the research being incomplete — these parties have not taken a side, and none could be inferred.</p>`:""}
@@ -31832,6 +31839,7 @@ function renderCheckerPartyTest(pid){
           ? (others.length?`<p class="quiet">${esc(partyName(pid))} also holds: ${others.map(x=>escBidi(x.label)).join("; ")}</p>`:"")
           : held.length?`<p><strong>${esc(partyName(pid))}:</strong> ${held.map(x=>escBidi(x.label)).join("; ")}</p>`
           :`<p class="quiet">${esc(partyName(pid))}${noPos?" has no researched position on this":" does not appear on any answer to this question"} — something you would be deciding without.</p>`}
+        <button class="checker-cmp-open" onclick="openIssuePartyDossier('${esc(pid)}','${esc(q.issueId)}',false)">${esc(partyName(pid))} on ${esc(issueTitle(q.issueId))}&nbsp;→</button>
       </div></div>`;
   }).join("");
   const agree=groups.filter(({q,os})=>{
