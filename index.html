@@ -1398,6 +1398,14 @@ h1{letter-spacing:-.022em}
     position:absolute;width:1px;height:1px;padding:0;margin:-1px;
     overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;
   }
+  /* The language button is the one topbar control with no icon behind the word, so hiding
+     .btn-text left an empty box. It keeps its label and sizes to it. */
+  .topactions #langBtn .btn-text{
+    position:static;width:auto;height:auto;padding:0;margin:0;
+    overflow:visible;clip:auto;border:0;
+    font-size:13px;font-weight:800;line-height:1;
+  }
+  .topactions #langBtn{min-width:44px;padding:0 9px}
   .topactions{gap:2px}
   .mobile-menu svg{width:21px;height:21px}
 }
