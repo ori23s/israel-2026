@@ -438,7 +438,7 @@ details[open] summary::after{content:"−"}
 
 
 /* V36 unified viability engine */
-.threshold-pill.projected{background:#edf2f8;color:#526174}
+.threshold-pill.projected{background:#eaf7f0;color:#267e55}
 .threshold-pill.just-above{background:#fff3d8;color:#8a6420}
 .threshold-pill.just-below{background:#e6a04a;color:#5d3405}
 
@@ -15469,7 +15469,11 @@ function thresholdStatus(name,poll){
     return {label:"Below threshold",cls:"below"};
   }
 
-  if(seats>0)return {label:"Projected to enter",cls:"projected"};
+  /* 3.25% is worth about four mandates, so four or five is in and precarious. Above that the
+     pill can say so plainly. */
+  if(seats>0)return seats<=5
+    ?{label:"Near threshold \u00b7 above",cls:"just-above"}
+    :{label:"Projected to enter",cls:"projected"};
   return {label:"Below threshold",cls:"below"};
 }
 function pollDisplayName(p){
