@@ -1,0 +1,8 @@
+# Every link ever shared as orispoliticalguide.netlify.app resolves through this.
+# It lives in netlify.toml, not _redirects, because Cloudflare Pages reads _redirects too and
+# would send the real site to itself in a loop. Cloudflare ignores this file entirely.
+[[redirects]]
+  from = "/*"
+  to = "https://orispoliticalguide.com/:splat"
+  status = 301
+  force = true
