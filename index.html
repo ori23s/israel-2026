@@ -16389,6 +16389,18 @@ function analyzeGovernmentScenario({
     }
   }
 
+  // A party's general entry condition is its rule for partners in the abstract. Where the same
+  // party has a record about a partner who is actually here - a condition toward that party, or a
+  // policy conflict it does not meet - that record is the general condition applied, and printing
+  // both states one requirement twice under two headings.
+  for(let i=issues.length-1;i>=0;i--){
+    const issue=issues[i];
+    if(issue.kind!=="entry_condition"||issue.target)continue;
+    const hasSpecific=issues.some(x=>x!==issue&&x.subject===issue.subject&&
+      (x.kind==="coalition_condition"||(x.kind==="policy_conflict"&&x.unmet)));
+    if(hasSpecific)issues.splice(i,1);
+  }
+
   // D. Candidate paths use the same scenario.
   const candidatePersonIds=[...new Set([
     ...PEOPLE.filter(p=>p.pmCandidate).map(p=>p.personId),
