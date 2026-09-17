@@ -16367,9 +16367,18 @@ function analyzeGovernmentScenario({
         const present=eligible.filter(group=>partyGroupIds(group).some(n=>coalitionMembers.includes(n)));
         const min=Number(rule.minDistinctGroups||2);
         if(present.length<min){
+          // Unmet means the condition is not met and nothing is moving toward meeting it. An
+          // arrangement still short of 61 is still being assembled, and a party from the other
+          // bloc would meet this one - so it is a condition to resolve until there is a
+          // government to judge, and unmet once there is.
+          const complete=totalSupportSeats>=61;
+          const shortfall=Math.max(0,61-totalSupportSeats);
+          const tail=complete
+            ?""
+            :` This arrangement holds ${totalSupportSeats} seats and is ${shortfall} short of a majority, so it is not yet the government this condition is about - a party from the other current bloc would meet it.`;
           addScenarioIssue(issues,makeIssue(
-            "broad_government_condition","conditional",partyName,null,rule.text,rule.evidence||[],
-            {presentGroups:present,requiredGroups:min,unmet:true}
+            "broad_government_condition","conditional",partyName,null,rule.text+tail,rule.evidence||[],
+            {presentGroups:present,requiredGroups:min,unmet:complete}
           ));
         }
       }
