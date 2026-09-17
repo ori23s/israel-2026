@@ -461,7 +461,7 @@ details[open] summary::after{content:"−"}
 .viability-issue.conditional.unmet,.viability-section.unmet .viability-issue.conditional{border-inline-start-color:#d98131;background:#fff6ef}
 .political-status.obstacle{background:#fff4ec;border-color:#f0cdae;color:#7d451a}
 .viability-issue.conditional{border-inline-start-color:#d69b36;background:#fff9ed}
-.viability-issue.unknown{border-inline-start-color:#9ba7b8;background:#f7f8fa}
+.viability-issue.obstacle{border-inline-start-color:#d98131;background:#fff6ef}.viability-issue.unknown{border-inline-start-color:#9ba7b8;background:#f7f8fa}
 .viability-issue strong{display:block;font-size:12px}
 .issue-counter{margin:9px 0 0;padding:8px 10px;background:#fff;border:1px dashed #c3ccda;border-radius:9px}
 .issue-counter-tag{display:inline-block;font-size:9.5px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:#6b5330;background:#f7efdf;border-radius:999px;padding:3px 7px;margin-bottom:5px}
@@ -5316,9 +5316,9 @@ function analyzeCandidatePath(candidatePersonId,{
 
     if(recommendationSeats>0&&otherRecommendations.length){
       addScenarioIssue(issues,makeIssue(
-        "competing_pm_path","conditional",candidatePersonId,otherRecommendations.map(personName).join(", "),
+        "competing_pm_path","conditional",candidatePersonId,null,
         `במפלגות שנבחרו יש המלצות רשומות למועמדים מתחרים לראשות הממשלה: ${otherRecommendations.map(personName).join(", ")}.`,
-        []
+        [],{competing:otherRecommendations.slice()}
       ));
     }
   }
@@ -5339,6 +5339,11 @@ function analyzeCandidatePath(candidatePersonId,{
   };
 }
 
+function listNames(names){
+  if(!names.length)return "";
+  if(names.length===1)return names[0];
+  return names.slice(0,-1).join(", ")+" ו"+names[names.length-1];
+}
 function analyzeGovernmentScenario({
   coalitionMembers=[],
   externalSupporters=[],
@@ -5612,10 +5617,9 @@ function analyzeGovernmentScenario({
 
     if(leaders.length>1){
       addScenarioIssue(issues,makeIssue(
-        "competing_pm_path","conditional",
-        leaders.map(x=>x.candidate).join(" / "),null,
+        "competing_pm_path","conditional",null,null,
         `המפלגות שנבחרו מייצרות כרגע מסלולי המלצה מתחרים לראשות הממשלה: ${leaders.map(x=>personName(x.candidate)).join(", ")}.`,
-        []
+        [],{competing:leaders.map(x=>x.candidate)}
       ));
     }
   }else if(all.length){
@@ -5654,6 +5658,27 @@ function analyzeGovernmentScenario({
     if(issues[i].kind==="pm_veto"&&refusingSubjects.has(issues[i].subject))issues.splice(i,1);
   }
 
+  // A candidate only reaches this list because someone in the arrangement asked for him. Printing
+  // one conflict per refuser describes the objection four times and never says whose candidate it
+  // is, which reads as noise in a coalition that does not contain his party. One issue, both sides
+  // named, and a severity that says this ends a candidacy rather than the arrangement.
+  for(const path of candidatePaths){
+    if(!path.recommendationSeats)continue;
+    const vetoes=issues.filter(x=>x.kind==="pm_veto"&&x.target===path.candidate);
+    if(vetoes.length<2)continue;
+    const asking=path.recommenders.map(r=>partyName(r.partyId));
+    const refusing=[...new Set(vetoes.map(x=>partyName(x.subject)))];
+    for(let i=issues.length-1;i>=0;i--){
+      if(issues[i].kind==="pm_veto"&&issues[i].target===path.candidate)issues.splice(i,1);
+    }
+    addScenarioIssue(issues,makeIssue(
+      "pm_candidate_conflict","obstacle",null,path.candidate,
+      `${listNames(asking)} ${asking.length===1?"ממליצה":"ממליצות"} על ${personName(path.candidate)} לראשות הממשלה. ${listNames(refusing)} פוסלות אותו. להסדר הזה אין מועמד שכולן יכולות לתמוך בו, אף שאין בכך כדי לפסול כהונה משותפת של אותן מפלגות בראשות מועמד אחר.`,
+      vetoes.flatMap(x=>x.evidence||[]),
+      {asking:path.recommenders.map(r=>r.partyId),refusing:vetoes.map(x=>x.subject)}
+    ));
+  }
+
   const pivotalParties=totalSupportSeats>=61
     ?all.map(name=>({
         name,
@@ -5669,6 +5694,15 @@ function analyzeGovernmentScenario({
       state:"empty",
       title:"בחרו מפלגות כדי להתחיל להרכיב ממשלה.",
       text:""
+    };
+  }else if(!issues.some(x=>x.severity==="blocking")&&issues.some(x=>x.kind==="pm_candidate_conflict")){
+    const clash=issues.filter(x=>x.kind==="pm_candidate_conflict");
+    const who=listNames([...new Set(clash.map(x=>x.target))].map(personName).filter(Boolean))||"המועמד הזה";
+    const refusers=listNames([...new Set(clash.flatMap(x=>x.refusing||[]))].map(partyName).filter(Boolean));
+    politicalSummary={
+      state:"conditional",
+      title:`אפשרי, אבל לא בראשות ${who}`,
+      text:`${refusers} פוסלות כהונה בראשות ${who} אבל לא פסלו את המפלגות האחרות כאן. הסדר כזה יזדקק למועמד אחר לראשות הממשלה.`
     };
   }else if(issues.some(x=>x.severity==="blocking")){
     // Refusing to serve under one person is not the same as refusing to govern together
