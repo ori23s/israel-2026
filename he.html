@@ -98,7 +98,7 @@ details[open] summary::after{content:"−"}
 .layerbtn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 .layer{display:none}
 .layer.active{display:block}
-.quickgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.quickgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.quickgrid>.fact.wide{grid-column:1/-1}
 .fact{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
 .fact .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:900;margin-bottom:6px}
 .placeholder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
@@ -3346,8 +3346,8 @@ function renderStructuredQuick(r,p){
   return `<div class="quickgrid">
     <div class="fact"><div class="label">בית פוליטי</div>${esc(r.quick?.politicalHome||"")}</div>
     <div class="fact"><div class="label">יו"ר / מועמד לראשות הממשלה</div>${leaderText}${recommendationText}</div>
-    <div class="fact"><div class="label">למה מצביעים להם</div>${esc(r.quick?.whyVote||"")}</div>
-    <div class="fact"><div class="label">שלוש עמדות מגדירות</div><ul>${(r.quick?.defining||[]).slice(0,3).map(x=>{const iid=(ISSUE_CATALOG.find(i=>i.title===x)||{}).issueId;const rec=iid?(r.issues||[]).find(i=>i.issueId===iid):null;const s=(compareSummaryForIssue(rec).summary||"").trim();return `<li><strong>${esc(x)}</strong>${s?` \u2014 ${esc(s)}`:""}</li>`;}).join("")}</ul></div>
+    <div class="fact wide"><div class="label">למה מצביעים להם</div>${esc(r.quick?.whyVote||"")}</div>
+    <div class="fact wide"><div class="label">שלוש עמדות מגדירות</div><ul>${(r.quick?.defining||[]).slice(0,3).map(x=>{const iid=(ISSUE_CATALOG.find(i=>i.title===x)||{}).issueId;const rec=iid?(r.issues||[]).find(i=>i.issueId===iid):null;const s=(compareSummaryForIssue(rec).summary||"").trim();return `<li><strong>${esc(x)}</strong>${s?` \u2014 ${esc(s)}`:""}</li>`;}).join("")}</ul></div>
     <div class="fact reading thesis"><div class="label">המציאות הקואליציונית</div>${inlineMd(partyCoalitionQuickText(p.partyId))}</div>
     <div class="fact reading"><div class="label">אי-הוודאות הגדולה ביותר</div>${esc(r.quick?.uncertainty||"")}</div>
   </div>`;
