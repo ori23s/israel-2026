@@ -5324,6 +5324,15 @@ function analyzeCandidatePath(candidatePersonId,{
   };
 }
 
+// A veto of a party's own leader is not "choose another candidate", it is "that party
+// replaces its leader", and the two should not read alike. quick.leader is prose, so match
+// the name it opens with - it is the leader in every record, and datacheck holds that shape.
+function partyLedBy(personId){
+  const person=PERSON_BY_ID.get(personId);
+  if(!person||!person.partyId)return null;
+  const lead=String(PARTY_RESEARCH[person.partyId]?.quick?.leader||"");
+  return lead.startsWith(personName(personId))?person.partyId:null;
+}
 function listNames(names){
   if(!names.length)return "";
   if(names.length===1)return names[0];
@@ -5658,18 +5667,31 @@ function analyzeGovernmentScenario({
   // named, and a severity that says this ends a candidacy rather than the arrangement.
   for(const path of candidatePaths){
     if(!path.recommendationSeats)continue;
-    const vetoes=issues.filter(x=>x.kind==="pm_veto"&&x.target===path.candidate);
-    if(vetoes.length<2)continue;
+    // Scope decides what may collapse. A refusal about who holds the office is a candidate
+    // conflict. A refusal to share a government with the person at all is a refusal of his
+    // party, and only stops being one where that party is not in the arrangement.
+    const candidateParty=(PERSON_BY_ID.get(path.candidate)||{}).partyId||null;
+    const candidatePartyHere=!!(candidateParty&&all.includes(candidateParty));
+    const collapsible=x=>x.kind==="pm_veto"&&x.target===path.candidate&&(
+      ["government_leadership","recommendation"].includes(x.vetoScope)||
+      (x.vetoScope==="any_partnership"&&!candidatePartyHere));
+    const vetoes=issues.filter(collapsible);
+    if(!vetoes.length)continue;
     const asking=path.recommenders.map(r=>partyName(r.partyId));
     const refusing=[...new Set(vetoes.map(x=>partyName(x.subject)))];
     for(let i=issues.length-1;i>=0;i--){
-      if(issues[i].kind==="pm_veto"&&issues[i].target===path.candidate)issues.splice(i,1);
+      if(collapsible(issues[i]))issues.splice(i,1);
     }
+    const ledParty=partyLedBy(path.candidate);
+    const ledHere=ledParty&&all.includes(ledParty)?ledParty:null;
+    const closing=ledHere
+      ?`הוא עומד בראש ${partyName(ledHere)}, ולכן אין מדובר בבחירת מועמד אחר: הסדר כזה יחייב את ${partyName(ledHere)} לבחור לעצמה מנהיג אחר.`
+      :`להסדר הזה אין מועמד שכולן יכולות לתמוך בו, אף שאין בכך כדי לפסול כהונה משותפת של אותן מפלגות בראשות מועמד אחר.`;
     addScenarioIssue(issues,makeIssue(
       "pm_candidate_conflict","obstacle",null,path.candidate,
-      `${listNames(asking)} ${asking.length===1?"ממליצה":"ממליצות"} על ${personName(path.candidate)} לראשות הממשלה. ${listNames(refusing)} פוסלות אותו. להסדר הזה אין מועמד שכולן יכולות לתמוך בו, אף שאין בכך כדי לפסול כהונה משותפת של אותן מפלגות בראשות מועמד אחר.`,
+      `${listNames(asking)} ${asking.length===1?"ממליצה":"ממליצות"} על ${personName(path.candidate)} לראשות הממשלה. ${listNames(refusing)} ${refusing.length===1?"פוסלת":"פוסלות"} אותו. ${closing}`,
       vetoes.flatMap(x=>x.evidence||[]),
-      {asking:path.recommenders.map(r=>r.partyId),refusing:vetoes.map(x=>x.subject)}
+      {asking:path.recommenders.map(r=>r.partyId),refusing:vetoes.map(x=>x.subject),leaderOf:ledHere}
     ));
   }
 
@@ -5692,12 +5714,24 @@ function analyzeGovernmentScenario({
   }else if(!issues.some(x=>x.severity==="blocking")&&issues.some(x=>x.kind==="pm_candidate_conflict")){
     const clash=issues.filter(x=>x.kind==="pm_candidate_conflict");
     const who=listNames([...new Set(clash.map(x=>x.target))].map(personName).filter(Boolean))||"המועמד הזה";
-    const refusers=listNames([...new Set(clash.flatMap(x=>x.refusing||[]))].map(partyName).filter(Boolean));
-    politicalSummary={
-      state:"conditional",
-      title:`אפשרי, אבל לא בראשות ${who}`,
-      text:`${refusers} פוסלות כהונה בראשות ${who} אבל לא פסלו את המפלגות האחרות כאן. הסדר כזה יזדקק למועמד אחר לראשות הממשלה.`
-    };
+    const refuserIds=[...new Set(clash.flatMap(x=>x.refusing||[]))];
+    const refusers=listNames(refuserIds.map(partyName).filter(Boolean));
+    const rule=refuserIds.length===1?"פוסלת":"פוסלות";
+    // Where the vetoed candidate leads one of these parties, "a different candidate" means that
+    // party changing leader, which is a different order of obstacle and has to read like one.
+    const led=[...new Set(clash.map(x=>x.leaderOf).filter(Boolean))];
+    const ledNames=listNames(led.map(partyName).filter(Boolean));
+    politicalSummary=led.length
+      ?{
+          state:"obstacle",
+          title:`אפשרי רק אם ${ledNames} ${led.length===1?"תחליף את מנהיגה":"יחליפו את מנהיגיהן"}`,
+          text:`${refusers} ${rule} כהונה בראשות ${who}, שעומד בראש ${ledNames}. ${refuserIds.length===1?"היא לא פסלה":"הן לא פסלו"} את המפלגות האחרות כאן, ואין זה סירוב לכהן יחד - אבל המועמד שבו הדבר תלוי הוא ${led.length===1?"מנהיגה של אותה מפלגה":"מנהיגיהן של אותן מפלגות"}, ואף מפלגה כאן לא הציעה להחליף ${led.length===1?"אותו":"אותם"}.`
+        }
+      :{
+          state:"obstacle",
+          title:`אפשרי, אבל לא בראשות ${who}`,
+          text:`${refusers} ${rule} כהונה בראשות ${who} אבל ${refuserIds.length===1?"לא פסלה":"לא פסלו"} את המפלגות האחרות כאן. הסדר כזה יזדקק למועמד אחר לראשות הממשלה.`
+        };
   }else if(issues.some(x=>x.severity==="blocking")){
     // Refusing to serve under one person is not the same as refusing to govern together
     // at all. If every blocking issue is a leadership veto, the honest answer is that the
