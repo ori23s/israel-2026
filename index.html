@@ -15269,6 +15269,7 @@ function setCompareSlot(slot,value){
   next[slot]=i;
   selectedCompare=next.filter((x,pos,arr)=>Number.isInteger(x)&&arr.indexOf(x)===pos).slice(0,4);
   compareBlankSlots=Math.min(compareBlankSlots,Math.max(0,4-selectedCompare.length));
+  preserveScrollOnNextHash=true;
   navigateState("compare");
 }
 function fillCompareBlank(value){
@@ -15280,6 +15281,7 @@ function fillCompareBlank(value){
 }
 function removeCompareSlot(slot){
   selectedCompare=selectedCompare.filter((_,i)=>i!==slot);
+  preserveScrollOnNextHash=true;
   navigateState("compare");
 }
 function removeCompareBlank(){
