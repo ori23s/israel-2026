@@ -3383,7 +3383,7 @@ const COALITION_RELATIONSHIPS = [
   },
   {
     "mode": "coalition",
-    "status": "conditional",
+    "status": "explicit_willing",
     "text": "Blue and White is willing to sit in a government with Likud, including one led by Netanyahu, provided it is broad enough to span both current blocs and excludes the far right and the Arab parties. Gantz has declined to rule Netanyahu out personally. Confirmed again on 10 September 2026: the party's own statement names the draft dodgers, the extremists and reliance on the Arab parties as what it will prevent, and does not name Netanyahu.",
     "effectiveAsOf": "2026-09-10",
     "evidence": [
@@ -3584,7 +3584,7 @@ const COALITION_RELATIONSHIPS = [
   },
   {
     "mode": "coalition",
-    "status": "conditional",
+    "status": "no_clear_position",
     "text": "The Haredi Public places itself in the same bloc as Shas while campaigning directly against it, arguing that a ballot for Shas or United Torah Judaism protects a draft exemption most haredi men do not use for full-time study.",
     "effectiveAsOf": "2026-08-23",
     "evidence": [
@@ -3603,7 +3603,7 @@ const COALITION_RELATIONSHIPS = [
   },
   {
     "mode": "coalition",
-    "status": "conditional",
+    "status": "no_clear_position",
     "text": "The Haredi Public began as a demand for a slot inside United Torah Judaism and ran independently only after that failed. It shares UTJ's bloc but not its position on conscription.",
     "effectiveAsOf": "2026-08-23",
     "evidence": [
@@ -16624,7 +16624,15 @@ function analyzeGovernmentScenario({
       const sides=[...new Set(clash.flatMap(x=>[x.subject,x.target]))].map(entityLabel).filter(Boolean);
       obstacleText=`No party here has refused another. But ${sides.join(" and ")} hold requirements that contradict each other, and each treats its own as a red line. One of them would have to give way for this government to exist, and neither has said it would.`;
     }else{
-      obstacleText=`No party here has refused another. But ${failing.join(", ")||"a party in this arrangement"} does not currently meet conditions another party has set for entering a government with it, and is not seeking to. Treat this as a real obstacle rather than a detail of negotiation.`;
+      // A condition about the shape of the government belongs to the party that set it rather
+      // than pointing at another, so there is no target to name - name the holder instead.
+      const holders=[...new Set(unmet.filter(x=>!x.target&&x.subject).map(x=>x.subject))]
+        .map(entityLabel).filter(Boolean);
+      obstacleText=failing.length
+        ?`No party here has refused another. But ${failing.join(", ")} does not currently meet conditions another party has set for entering a government with it, and is not seeking to. Treat this as a real obstacle rather than a detail of negotiation.`
+        :holders.length
+          ?`No party here has refused another. But this arrangement does not meet a condition ${listNames(holders)} ${holders.length===1?"has":"have"} set for entering a government, and nothing in it is moving toward meeting ${holders.length===1?"it":"them"}. Treat this as a real obstacle rather than a detail of negotiation.`
+          :`No party here has refused another. But a condition one of these parties has set for entering a government is not currently met, and is not being moved toward. Treat this as a real obstacle rather than a detail of negotiation.`;
       if(clash.length)obstacleText+=" This arrangement also contains requirements that contradict each other.";
     }
     politicalSummary={
