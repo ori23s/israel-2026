@@ -682,7 +682,7 @@ details[open] summary::after{content:"−"}
 .compare-scope-control select{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 10px}
 .compare-issue-cell{display:grid;gap:5px;text-align:start;width:100%;border:0;background:transparent;padding:0;cursor:pointer;color:inherit}
 .compare-issue-cell .research-state-inline{margin:0}
-.compare-summary{display:block;font-size:14px;line-height:1.45;color:#3d4757}
+.compare-summary{display:block;font-size:14px;line-height:1.45;color:#3d4757}.compare-summary.compare-unstated{color:#77828f}
 .compare-open{font-size:10px;font-weight:850;color:var(--blue)}
 .compare-state-only{cursor:default}
 button.compare-state-only{cursor:pointer}
@@ -4480,7 +4480,8 @@ function deriveCompareSummary(text,max=105){
 function compareSummaryForIssue(issue){
   if(!issue)return {state:RESEARCH_STATES.NOT_RESEARCHED,summary:""};
   if(issue.researchState===RESEARCH_STATES.NOT_RESEARCHED)return {state:issue.researchState,summary:""};
-  if(issue.researchState===RESEARCH_STATES.NO_CLEAR)return {state:issue.researchState,summary:""};
+  /* Keep the written summary: for these records it is the finding, not a placeholder. */
+  if(issue.researchState===RESEARCH_STATES.NO_CLEAR)return {state:issue.researchState,summary:issue.compareSummary||""};
   if(issue.researchState===RESEARCH_STATES.NOT_APPLICABLE)return {state:issue.researchState,summary:""};
   return {
     state:issue.researchState,
@@ -4493,14 +4494,13 @@ function compareIssueCell(p,issueId){
 
   if(!issue||presentation.state===RESEARCH_STATES.NOT_RESEARCHED){
     return `<div class="compare-issue-cell compare-state-only">
-      <small class="research-state-inline">${esc(researchStateLabel(RESEARCH_STATES.NOT_RESEARCHED))}</small>
+      <span class="compare-summary compare-unstated">${esc(researchStateLabel(RESEARCH_STATES.NOT_RESEARCHED))}</span>
     </div>`;
   }
 
   const stateOnly=presentation.state===RESEARCH_STATES.NO_CLEAR||presentation.state===RESEARCH_STATES.NOT_APPLICABLE;
   return `<button class="compare-issue-cell ${stateOnly?"compare-state-only":""}" onclick="openIssuePartyDossier('${p.partyId}','${issueId}')">
-    <small class="research-state-inline">${esc(researchStateLabel(presentation.state))}</small>
-    ${presentation.summary?`<span class="compare-summary">${esc(presentation.summary)}</span>`:""}
+    <span class="compare-summary${stateOnly?" compare-unstated":""}">${esc(presentation.summary||researchStateLabel(presentation.state))}</span>
     <span class="compare-open">לניתוח המלא&nbsp;←</span>
   </button>`;
 }
