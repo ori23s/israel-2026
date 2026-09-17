@@ -16033,21 +16033,6 @@ function analyzeCandidatePath(candidatePersonId,{
     }
   }
 
-  if(!standalone){
-    const otherRecommendations=[...new Set(participants
-      .map(partyId=>electionPartyState(partyId).pmRecommendation?.personId)
-      .filter(Boolean)
-      .filter(personId=>personId!==candidatePersonId))];
-
-    if(recommendationSeats>0&&otherRecommendations.length){
-      addScenarioIssue(issues,makeIssue(
-        "competing_pm_path","conditional",candidatePersonId,null,
-        `The selected parties contain recorded recommendations for competing prime-ministerial candidates: ${otherRecommendations.map(personName).join(", ")}.`,
-        [],{competing:otherRecommendations.slice()}
-      ));
-    }
-  }
-
   const blockingParties=new Set(
     issues.filter(x=>x.kind==="pm_veto"&&x.severity==="blocking").map(x=>x.subject)
   );
@@ -16340,11 +16325,20 @@ function analyzeGovernmentScenario({
     // must not disappear because a different candidate happens to lead the seat count.
     positivePaths.forEach(path=>path.issues.forEach(issue=>addScenarioIssue(issues,issue)));
 
-    if(leaders.length>1){
+    // Who wants whom is the fact a reader needs, and it is one fact about the arrangement
+    // rather than one per candidate. Stated per path it came out as the same sentence with the
+    // names rotated - the pm_veto problem of V158, in a second place.
+    if(positivePaths.length>1){
+      const clauses=positivePaths.map(path=>
+        `${listNames(path.recommenders.map(r=>partyName(r.partyId)))} ${path.recommenders.length===1?"recommends":"recommend"} ${personName(path.candidate)}`
+      );
+      const lead=leaders.length>1
+        ?`No candidate leads on recommended seats: ${listNames(leaders.map(x=>personName(x.candidate)))} are level at ${max}.`
+        :`${personName(positivePaths[0].candidate)} leads on recommended seats, with ${max} of the ${totalSupportSeats} seats selected here.`;
       addScenarioIssue(issues,makeIssue(
         "competing_pm_path","conditional",null,null,
-        `The selected parties currently produce competing prime-ministerial recommendation paths: ${leaders.map(x=>personName(x.candidate)).join(", ")}.`,
-        [],{competing:leaders.map(x=>x.candidate)}
+        `${clauses.join("; ")}. ${lead}`,
+        [],{competing:positivePaths.map(x=>x.candidate)}
       ));
     }
   }else if(all.length){
