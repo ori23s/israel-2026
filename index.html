@@ -1317,7 +1317,7 @@ html,body{
 
 /* Rows sized by their own content rather than by the tallest card in the row, so a short card
    no longer carries a block of dead white space. */
-.quickgrid{align-items:start}
+.quickgrid{align-items:stretch}
 
 /* One disclosure style. The guide had three: a white bordered box, a bare summary, and the flat
    one built for the Checker. The flat one is now the only one. */
@@ -6628,9 +6628,12 @@ function renderStructuredQuick(r,p){
   const leaderText=leaderIds.length
     ?leaderIds.map(pid=>structuredLeaderLink(pid)).join(" · ")
     :esc(r.quick?.leader||"");
-  const recommendationText=recommendation.personId&&personName(recommendation.personId)!==String(r.quick?.leader||"")
-    ?`<div style="margin-top:6px"><strong>Current PM recommendation:</strong> ${esc(personName(recommendation.personId))}</div>`
-    :"";
+  /* Say it in every case. Announcing nothing is itself a fact about a party, and an
+     expected recommendation must not read as an announced one. */
+  const recPerson=recommendation.personId?personName(recommendation.personId):"";
+  const redundant=recommendation.status==="explicit"&&recPerson===String(r.quick?.leader||"");
+  const recLine=redundant?"":pmRecommendationPresentation(recommendation);
+  const recommendationText=recLine?`<div style="margin-top:6px">${esc(recLine)}</div>`:"";
   return `<div class="quickgrid">
     <div class="fact"><div class="label">Political Home</div>${esc(r.quick?.politicalHome||"")}</div>
     <div class="fact"><div class="label">Leader / PM Choice</div>${leaderText}${recommendationText}</div>
