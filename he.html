@@ -5691,7 +5691,7 @@ function analyzeGovernmentScenario({
   // before that party files a recommendation. Liberman leads Yisrael Beytenu and is running for
   // prime minister; a refusal to serve under him is a fact about any arrangement containing it.
   const livePaths=candidatePaths.filter(x=>{
-    if(x.recommendationSeats>0)return true;
+    if(x.recommendationSeats>0||x.recommenders.length)return true;
     const led=partyLedBy(x.candidate);
     return !!(led&&all.includes(led)&&(PERSON_BY_ID.get(x.candidate)||{}).pmCandidate);
   });
@@ -5764,7 +5764,7 @@ function analyzeGovernmentScenario({
   // named, and a severity that says this ends a candidacy rather than the arrangement.
   for(const path of candidatePaths){
     const ledForLive=partyLedBy(path.candidate);
-    const liveHere=path.recommendationSeats>0
+    const liveHere=path.recommendationSeats>0||path.recommenders.length>0
       ||!!(ledForLive&&all.includes(ledForLive)&&(PERSON_BY_ID.get(path.candidate)||{}).pmCandidate);
     if(!liveHere)continue;
     // Scope decides what may collapse. A refusal about who holds the office is a candidate
@@ -5806,6 +5806,55 @@ function analyzeGovernmentScenario({
       {asking:path.recommenders.map(r=>r.partyId),refusing:vetoes.map(x=>x.subject),
        leaderOf:ledHere,homeParty,homeAbsent,askClause}
     ));
+  }
+
+  // Outside support from a group the bloc has ruled out. Likud publishes a rule for this and it
+  // fires above; the rest of the bloc has published nothing, and silence there is not openness -
+  // nobody in it has proposed a government resting on Arab-party votes and its leader rejects one.
+  // Inferred, and labelled as inferred, rather than left as an empty arrangement.
+  if(coalitionSeats<61&&partyGroupIds("arab").some(n=>externalSupporters.includes(n))){
+    const already=new Set(issues.filter(x=>x.kind==="government_dependency").map(x=>x.subject));
+    const bloc=coalitionMembers.filter(n=>
+      electionPartyState(n).coalitionPosition?.alignment==="netanyahu"&&!already.has(n));
+    if(bloc.length){
+      const names=bloc.map(partyName);
+      addScenarioIssue(issues,makeIssue(
+        "government_dependency","blocking",bloc[0],"arab",
+        `נרשם כקריאה של המדריך, ולא כעמדה שאחת מהמפלגות האלה הצהירה עליה. ${listNames(names)} לא ${bloc.length===1?"פרסמה":"פרסמו"} דבר על ממשלה שתגיע ל-61 בזכות קולות של מפלגות ערביות מבחוץ. ${bloc.length===1?"היא נמנית":"הן נמנות"} עם המפלגות שמזוהות עם נתניהו, שראשן פרסם את ההפך - הליכוד דוחה הקמה או אפשור של ממשלה שתלויה במפלגות הערביות - ואף מפלגה בגוש הזה לא הציעה הסדר כזה. יש לקרוא את השתיקה כעמדת הגוש ולא כפתיחות להסדר כזה.`,
+        [],{inferred:true,targets:bloc.slice()}
+      ));
+    }
+  }
+
+  // A veto is a fact about this arrangement even before anyone has proposed the person it names.
+  // United Torah Judaism has announced no recommendation, so the Joint List's refusal to serve
+  // under Netanyahu produces no conflict here - and that silence is exactly what the arrangement
+  // turns on. Say it as a condition, since nothing has been refused yet.
+  const AIMED_SCOPES=["government_leadership","any_partnership","recommendation"];
+  for(const partyId of all){
+    for(const veto of (electionPartyState(partyId).pmVetoes||[])){
+      if(!AIMED_SCOPES.includes(vetoScope(veto)))continue;
+      const target=veto.personId;
+      if(!PERSON_BY_ID.has(target))continue;
+      // Once someone here is recommending him, the candidate conflict already says this.
+      const recommendedHere=all.some(n=>{
+        const rec=electionPartyState(n).pmRecommendation;
+        return rec&&rec.personId===target&&["explicit","expected"].includes(rec.status);
+      });
+      if(recommendedHere)continue;
+      const home=(PERSON_BY_ID.get(target)||{}).partyId||null;
+      const homeAlignment=home?electionPartyState(home).coalitionPosition?.alignment:null;
+      if(!homeAlignment)continue;
+      const silent=all.filter(n=>n!==partyId
+        &&electionPartyState(n).pmRecommendation?.status==="not_announced"
+        &&electionPartyState(n).coalitionPosition?.alignment===homeAlignment);
+      if(!silent.length)continue;
+      addScenarioIssue(issues,makeIssue(
+        "recommendation_not_announced","conditional",partyId,target,
+        `${listNames(silent.map(partyName))} טרם ${silent.length===1?"הודיעה":"הודיעו"} על מי ${silent.length===1?"תמליץ":"ימליצו"} לראשות הממשלה, ${silent.length===1?"והיא נמנית":"והן נמנות"} עם ${groupLabel(homeAlignment)||alignmentLabel(homeAlignment)}. ${partyName(partyId)} פוסלת כהונה בראשות ${personName(target)}. אף מפלגה בהסדר הזה לא המליצה עליו, ולכן שום דבר עדיין אינו תלוי בכך - אבל כך יקרה ברגע ש${silent.length===1?"אותה מפלגה תמליץ":"אחת מהן תמליץ"}.`,
+        veto.evidence||[],{silent:silent.slice()}
+      ));
+    }
   }
 
   const pivotalParties=totalSupportSeats>=61
@@ -6164,6 +6213,7 @@ function renderIssueEvidence(items){
 // printed the prose label written for mid-sentence use: "the haredi parties". Headers get names.
 const ISSUE_KIND_LABEL=Object.freeze({
   competing_pm_path:"מסלולים מתחרים לראשות הממשלה",
+  recommendation_not_announced:"טרם הוכרזה המלצה",
   pm_candidate_conflict:"מחלוקת על המועמד",
   pm_veto:"פסילת מועמד לראשות הממשלה",
   bloc_span:"שיוכים שונים",

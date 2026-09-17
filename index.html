@@ -16416,7 +16416,7 @@ function analyzeGovernmentScenario({
   // before that party files a recommendation. Liberman leads Yisrael Beytenu and is running for
   // prime minister; a refusal to serve under him is a fact about any arrangement containing it.
   const livePaths=candidatePaths.filter(x=>{
-    if(x.recommendationSeats>0)return true;
+    if(x.recommendationSeats>0||x.recommenders.length)return true;
     const led=partyLedBy(x.candidate);
     return !!(led&&all.includes(led)&&(PERSON_BY_ID.get(x.candidate)||{}).pmCandidate);
   });
@@ -16489,7 +16489,7 @@ function analyzeGovernmentScenario({
   // named, and a severity that says this ends a candidacy rather than the arrangement.
   for(const path of candidatePaths){
     const ledForLive=partyLedBy(path.candidate);
-    const liveHere=path.recommendationSeats>0
+    const liveHere=path.recommendationSeats>0||path.recommenders.length>0
       ||!!(ledForLive&&all.includes(ledForLive)&&(PERSON_BY_ID.get(path.candidate)||{}).pmCandidate);
     if(!liveHere)continue;
     // Scope decides what may collapse. A refusal about who holds the office is a candidate
@@ -16531,6 +16531,55 @@ function analyzeGovernmentScenario({
       {asking:path.recommenders.map(r=>r.partyId),refusing:vetoes.map(x=>x.subject),
        leaderOf:ledHere,homeParty,homeAbsent,askClause}
     ));
+  }
+
+  // Outside support from a group the bloc has ruled out. Likud publishes a rule for this and it
+  // fires above; the rest of the bloc has published nothing, and silence there is not openness -
+  // nobody in it has proposed a government resting on Arab-party votes and its leader rejects one.
+  // Inferred, and labelled as inferred, rather than left as an empty arrangement.
+  if(coalitionSeats<61&&partyGroupIds("arab").some(n=>externalSupporters.includes(n))){
+    const already=new Set(issues.filter(x=>x.kind==="government_dependency").map(x=>x.subject));
+    const bloc=coalitionMembers.filter(n=>
+      electionPartyState(n).coalitionPosition?.alignment==="netanyahu"&&!already.has(n));
+    if(bloc.length){
+      const names=bloc.map(partyName);
+      addScenarioIssue(issues,makeIssue(
+        "government_dependency","blocking",bloc[0],"arab",
+        `Recorded as the guide's reading, not as a position any of these parties has stated. ${listNames(names)} ${bloc.length===1?"has":"have"} published nothing about a government carried to 61 by Arab-party votes from outside it. ${bloc.length===1?"It sits":"They sit"} with the Netanyahu-aligned parties, whose leader has published the opposite - Likud rejects forming or enabling a government that depends on the Arab parties - and no party in that bloc has proposed such an arrangement. Read the silence as the bloc's position rather than as openness to it.`,
+        [],{inferred:true,targets:bloc.slice()}
+      ));
+    }
+  }
+
+  // A veto is a fact about this arrangement even before anyone has proposed the person it names.
+  // United Torah Judaism has announced no recommendation, so the Joint List's refusal to serve
+  // under Netanyahu produces no conflict here - and that silence is exactly what the arrangement
+  // turns on. Say it as a condition, since nothing has been refused yet.
+  const AIMED_SCOPES=["government_leadership","any_partnership","recommendation"];
+  for(const partyId of all){
+    for(const veto of (electionPartyState(partyId).pmVetoes||[])){
+      if(!AIMED_SCOPES.includes(vetoScope(veto)))continue;
+      const target=veto.personId;
+      if(!PERSON_BY_ID.has(target))continue;
+      // Once someone here is recommending him, the candidate conflict already says this.
+      const recommendedHere=all.some(n=>{
+        const rec=electionPartyState(n).pmRecommendation;
+        return rec&&rec.personId===target&&["explicit","expected"].includes(rec.status);
+      });
+      if(recommendedHere)continue;
+      const home=(PERSON_BY_ID.get(target)||{}).partyId||null;
+      const homeAlignment=home?electionPartyState(home).coalitionPosition?.alignment:null;
+      if(!homeAlignment)continue;
+      const silent=all.filter(n=>n!==partyId
+        &&electionPartyState(n).pmRecommendation?.status==="not_announced"
+        &&electionPartyState(n).coalitionPosition?.alignment===homeAlignment);
+      if(!silent.length)continue;
+      addScenarioIssue(issues,makeIssue(
+        "recommendation_not_announced","conditional",partyId,target,
+        `${listNames(silent.map(partyName))} ${silent.length===1?"has":"have"} not announced whom ${silent.length===1?"it":"they"} will recommend for prime minister, and ${silent.length===1?"sits":"sit"} with ${groupLabel(homeAlignment)||alignmentLabel(homeAlignment)}. ${partyName(partyId)} rules out serving under ${personName(target)}. No party in this arrangement has recommended him, so nothing turns on it yet - but it would the moment ${silent.length===1?"that party does":"one of them does"}.`,
+        veto.evidence||[],{silent:silent.slice()}
+      ));
+    }
   }
 
   const pivotalParties=totalSupportSeats>=61
@@ -16889,6 +16938,7 @@ function renderIssueEvidence(items){
 // printed the prose label written for mid-sentence use: "the haredi parties". Headers get names.
 const ISSUE_KIND_LABEL=Object.freeze({
   competing_pm_path:"Competing PM paths",
+  recommendation_not_announced:"Recommendation not announced",
   pm_candidate_conflict:"Candidate conflict",
   pm_veto:"Prime-ministerial veto",
   bloc_span:"Different alignments",
