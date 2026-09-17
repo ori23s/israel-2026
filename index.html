@@ -16261,7 +16261,10 @@ function analyzeGovernmentScenario({
   }
 
   // C. Structural rules and entry conditions.
-  for(const partyName of coalitionMembers){
+  // A rule is a party's terms for governing with others. One party on its own is not an
+  // arrangement, so there is nothing for its terms to be terms of - Blue and White alone was
+  // reporting that it requires a government spanning both blocs, a condition with itself.
+  for(const partyName of (all.length>1?coalitionMembers:[])){
     const rules=electionPartyState(partyName).coalitionPosition?.rules||[];
 
     for(const rule of rules){
@@ -16496,7 +16499,7 @@ function analyzeGovernmentScenario({
       ?{
           state:"obstacle",
           title:`Possible only if ${ledNames} ${led.length===1?"replaces its leader":"replace their leaders"}`,
-          text:`${refusers} ${rule} out serving under ${who}, who ${led.length===1?"leads":"lead"} ${ledNames}. They have not ruled out the other parties here, so this is not a refusal to govern together - but the candidate it turns on is ${led.length===1?"that party's own leader":"those parties' own leaders"}, and no party here has proposed replacing ${led.length===1?"him":"them"}.`
+          text:`${refusers} ${rule} out serving under ${who}, who ${led.length===1?"leads":"lead"} ${ledNames}. ${refuserIds.length===1?"It has":"They have"} not ruled out ${ledNames} ${led.length===1?"itself":"themselves"}, so this is not a refusal to govern together - but the candidate it turns on is ${led.length===1?"that party's own leader":"those parties' own leaders"}, and no party here has proposed replacing ${led.length===1?"him":"them"}.`
         }
       :{
           state:"obstacle",
@@ -16877,7 +16880,6 @@ function renderPoliticalViabilityHTML(analysis){
     ${unmetConditions.length?`<section class="viability-section unmet"><h3>Conditions Not Currently Met</h3>${renderIssueList(unmetConditions)}${renderIssueEvidence(unmetConditions)}</section>`:""}
     ${negotiableConditions.length?`<section class="viability-section"><h3>Conditions to Resolve</h3>${renderIssueList(negotiableConditions)}${renderIssueEvidence(negotiableConditions)}</section>`:""}
     ${externalSupportSelected.length&&outside.length?`<section class="viability-section"><h3>Outside-Support Questions</h3>${renderIssueList(outside)}${renderIssueEvidence(outside)}</section>`:""}
-    ${unknowns.length?`<details class="viability-unknowns"><summary>What Remains Unclear (${unknowns.length})</summary>${renderIssueList(unknowns)}${renderIssueEvidence(unknowns)}</details>`:""}
   </div>`;
 }
 function leadingCandidatePaths(analysis){

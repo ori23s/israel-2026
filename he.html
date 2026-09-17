@@ -5536,7 +5536,10 @@ function analyzeGovernmentScenario({
   }
 
   // C. Structural rules and entry conditions.
-  for(const partyName of coalitionMembers){
+  // A rule is a party's terms for governing with others. One party on its own is not an
+  // arrangement, so there is nothing for its terms to be terms of - Blue and White alone was
+  // reporting that it requires a government spanning both blocs, a condition with itself.
+  for(const partyName of (all.length>1?coalitionMembers:[])){
     const rules=electionPartyState(partyName).coalitionPosition?.rules||[];
 
     for(const rule of rules){
@@ -5771,7 +5774,7 @@ function analyzeGovernmentScenario({
       ?{
           state:"obstacle",
           title:`אפשרי רק אם ${ledNames} ${led.length===1?"תחליף את מנהיגה":"יחליפו את מנהיגיהן"}`,
-          text:`${refusers} ${rule} כהונה בראשות ${who}, שעומד בראש ${ledNames}. ${refuserIds.length===1?"היא לא פסלה":"הן לא פסלו"} את המפלגות האחרות כאן, ואין זה סירוב לכהן יחד - אבל המועמד שבו הדבר תלוי הוא ${led.length===1?"מנהיגה של אותה מפלגה":"מנהיגיהן של אותן מפלגות"}, ואף מפלגה כאן לא הציעה להחליף ${led.length===1?"אותו":"אותם"}.`
+          text:`${refusers} ${rule} כהונה בראשות ${who}, שעומד בראש ${ledNames}. ${refuserIds.length===1?"היא לא פסלה":"הן לא פסלו"} את ${ledNames} ${led.length===1?"עצמה":"עצמן"}, ואין זה סירוב לכהן יחד - אבל המועמד שבו הדבר תלוי הוא ${led.length===1?"מנהיגה של אותה מפלגה":"מנהיגיהן של אותן מפלגות"}, ואף מפלגה כאן לא הציעה להחליף ${led.length===1?"אותו":"אותם"}.`
         }
       :{
           state:"obstacle",
@@ -6152,7 +6155,6 @@ function renderPoliticalViabilityHTML(analysis){
     ${unmetConditions.length?`<section class="viability-section unmet"><h3>תנאים שאינם מתקיימים כרגע</h3>${renderIssueList(unmetConditions)}${renderIssueEvidence(unmetConditions)}</section>`:""}
     ${negotiableConditions.length?`<section class="viability-section"><h3>תנאים לפתרון</h3>${renderIssueList(negotiableConditions)}${renderIssueEvidence(negotiableConditions)}</section>`:""}
     ${externalSupportSelected.length&&outside.length?`<section class="viability-section"><h3>שאלות של תמיכה מבחוץ</h3>${renderIssueList(outside)}${renderIssueEvidence(outside)}</section>`:""}
-    ${unknowns.length?`<details class="viability-unknowns"><summary>מה עדיין לא ברור (${unknowns.length})</summary>${renderIssueList(unknowns)}${renderIssueEvidence(unknowns)}</details>`:""}
   </div>`;
 }
 function leadingCandidatePaths(analysis){
