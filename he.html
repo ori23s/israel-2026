@@ -4763,7 +4763,7 @@ function thresholdStatus(name,poll){
   /* 3.25% is worth about four mandates, so four or five is in and precarious. Above that the
      pill can say so plainly. */
   if(seats>0)return seats<=5
-    ?{label:"Near threshold \u00b7 above",cls:"just-above"}
+    ?{label:"קרוב לאחוז החסימה \u00b7 מעליו",cls:"just-above"}
     :{label:"צפויה לעבור",cls:"projected"};
   return {label:"מתחת לאחוז החסימה",cls:"below"};
 }
