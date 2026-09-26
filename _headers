@@ -1,0 +1,6 @@
+# Cloudflare Pages headers. The service worker must never be served from a cache, or a fix to it
+# could take days to reach readers who installed the guide.
+/sw.js
+  Cache-Control: no-cache
+/*.webmanifest
+  Content-Type: application/manifest+json

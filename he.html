@@ -8,6 +8,13 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%232f6fed'/%3E%3Cstop%20offset='1'%20stop-color='%2379a9ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='32'%20height='32'%20rx='11'%20fill='url%28%23g%29'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='7.6'%20fill='none'%20stroke='%23fff'%20stroke-width='4'/%3E%3C/svg%3E">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="manifest" href="/manifest-he.webmanifest">
+<meta name="theme-color" content="#2f6fed">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="המדריך של אורי">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="המדריך הפוליטי של אורי">
 <meta property="og:title" content="המדריך הפוליטי של אורי · ישראל 2026">
@@ -1498,6 +1505,13 @@ h1{letter-spacing:-.022em}
 .lang-modal-actions button{border-radius:999px;padding:9px 14px;font-weight:800;cursor:pointer;border:1px solid var(--line)}
 .lang-modal-actions .primary{background:#274f86;color:#fff;border-color:#274f86}
 .lang-modal-actions .secondary{background:#fff}
+
+.offline-note,.install-hint{position:fixed;left:12px;right:12px;margin:0 auto;max-width:520px;z-index:1000;font-size:14px;line-height:1.45;box-shadow:var(--shadow);border-radius:14px}
+.offline-note{top:calc(env(safe-area-inset-top) + 8px);background:var(--ink);color:#fff;padding:10px 14px}
+.install-hint{bottom:calc(env(safe-area-inset-bottom) + 12px);background:var(--paper);color:var(--ink);border:1px solid var(--line);padding:14px 16px;display:flex;gap:14px;align-items:center}
+.install-hint p{margin:0;flex:1}
+.install-hint button{flex:none;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:600;padding:8px 14px;cursor:pointer}
+@media print{.offline-note,.install-hint{display:none}}
 
 /* ============================ Hebrew edition · RTL ============================ */
 
@@ -8783,6 +8797,42 @@ validateDataModel();
 syncMobileNavAccessibility();
 render();
 languageNoticeOnArrival();
+
+/* Offline copy and home-screen install - see offline/sw.js. */
+const INSTALL_HINT_STORE="ori-guide-install-hint";
+function offlineCopySetup(){
+  const secure=location.protocol==="https:"||location.hostname==="localhost";
+  if(secure&&"serviceWorker" in navigator){
+    window.addEventListener("load",()=>{navigator.serviceWorker.register("/sw.js").catch(()=>{})});
+  }
+  const showOffline=()=>{
+    if(navigator.onLine!==false||document.getElementById("offlineNote"))return;
+    const note=document.createElement("div");
+    note.id="offlineNote";note.className="offline-note";note.setAttribute("role","status");
+    note.textContent="אתם במצב לא מקוון. זה העותק שנשמר במכשיר, ולכן ייתכן שבאתר יש סקרים חדשים יותר.";
+    document.body.appendChild(note);
+  };
+  window.addEventListener("offline",showOffline);
+  window.addEventListener("online",()=>{const n=document.getElementById("offlineNote");if(n)n.remove()});
+  showOffline();
+
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const installed=navigator.standalone===true||(typeof window.matchMedia==="function"&&window.matchMedia("(display-mode: standalone)").matches);
+  if(!secure||!ios||installed)return;
+  try{if(localStorage.getItem(INSTALL_HINT_STORE)==="1")return}catch(e){}
+  setTimeout(()=>{
+    const box=document.createElement("div");
+    box.className="install-hint";box.setAttribute("role","note");
+    const text=document.createElement("p");
+    text.innerHTML="<strong>שמרו את המדריך בטלפון.</strong> הקישו על שיתוף ובחרו בהוספה למסך הבית. מעכשיו הוא ייפתח משם כמו אפליקציה, גם בלי אינטרנט.";
+    const ok=document.createElement("button");
+    ok.type="button";ok.textContent="הבנתי";
+    ok.addEventListener("click",()=>{box.remove();try{localStorage.setItem(INSTALL_HINT_STORE,"1")}catch(e){}});
+    box.append(text,ok);document.body.appendChild(box);
+  },3000);
+}
+// An offline copy is a convenience; nothing in it may ever stop the guide itself from running.
+try{offlineCopySetup()}catch(e){}
 </script>
 
 </body>
