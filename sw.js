@@ -25,6 +25,36 @@ function pageKey(url) {
   return null;
 }
 
+/* Both editions are saved at install, but the second is a few megabytes fetched in the background,
+   and a phone can go offline before it lands. So every online visit also fills in whichever edition
+   is missing, and an edition that is still missing offline gets a plain explanation instead of the
+   browser's raw fetch error - which is what the language button produced in V179. */
+async function fillMissing(cache) {
+  for (const path of PAGES) {
+    if (await cache.match(path)) continue;
+    try {
+      const res = await fetch(new Request(path, {cache: "reload"}));
+      if (res.ok) await cache.put(path, await plain(res));
+    } catch (e) { /* offline again - the next visit tries */ }
+  }
+}
+
+function notSaved(key) {
+  const he = key === "/he";
+  const html = he
+    ? '<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>המדריך הפוליטי של אורי</title>'
+      + '<body style="font-family:system-ui,sans-serif;background:#f4f7fb;color:#172033;padding:32px 20px;line-height:1.55;max-width:560px;margin:0 auto">'
+      + '<h1 style="font-size:22px">הגרסה העברית עוד לא נשמרה במכשיר הזה</h1>'
+      + '<p>היא נשמרת בפעם הראשונה שפותחים אותה כשיש אינטרנט. אחרי זה היא תעבוד גם בלי חיבור.</p>'
+      + '<p><a href="/" style="color:#2f6fed">חזרה למדריך באנגלית</a></p></body></html>'
+    : '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ori\'s Political Guide</title>'
+      + '<body style="font-family:system-ui,sans-serif;background:#f4f7fb;color:#172033;padding:32px 20px;line-height:1.55;max-width:560px;margin:0 auto">'
+      + '<h1 style="font-size:22px">The English edition is not saved on this device yet</h1>'
+      + '<p>It is saved the first time it is opened with an internet connection. After that it works offline too.</p>'
+      + '<p><a href="/he" style="color:#2f6fed">Back to the Hebrew guide</a></p></body></html>';
+  return new Response(html, {headers: {"Content-Type": "text/html; charset=utf-8"}});
+}
+
 async function plain(res) {
   if (!res.redirected) return res;
   return new Response(await res.blob(), {status: res.status, statusText: res.statusText, headers: res.headers});
@@ -69,8 +99,8 @@ self.addEventListener("fetch", event => {
         await cache.put(key, copy.clone());
         return copy;
       });
-      event.waitUntil(fresh.catch(() => {}));
-      if (!saved) return fresh;
+      event.waitUntil(fresh.then(() => fillMissing(cache)).catch(() => {}));
+      if (!saved) return fresh.catch(() => notSaved(key));
       return Promise.race([
         fresh.catch(() => saved),
         new Promise(resolve => setTimeout(() => resolve(saved), SLOW_NETWORK_MS))

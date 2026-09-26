@@ -19580,7 +19580,7 @@ render();
 languageNoticeOnArrival();
 
 /* Offline copy and home-screen install - see offline/sw.js. */
-const INSTALL_HINT_STORE="ori-guide-install-hint";
+const INSTALL_HINT_STORE="ori-guide-install-hint-2";
 function offlineCopySetup(){
   const secure=location.protocol==="https:"||location.hostname==="localhost";
   if(secure&&"serviceWorker" in navigator){
@@ -19605,7 +19605,7 @@ function offlineCopySetup(){
     const box=document.createElement("div");
     box.className="install-hint";box.setAttribute("role","note");
     const text=document.createElement("p");
-    text.innerHTML="<strong>Keep this guide on your phone.</strong> Tap Share, then Add to Home Screen. It opens from there like an app, even without internet.";
+    text.innerHTML="<strong>Keep this guide on your phone, even without internet.</strong> Tap Share, then Add to Home Screen. If you see <em>Open as Web App</em>, switch it off before tapping Add. The Hebrew edition is saved with it. Open it every so often and your phone keeps the saved copy.";
     const ok=document.createElement("button");
     ok.type="button";ok.textContent="Got it";
     ok.addEventListener("click",()=>{box.remove();try{localStorage.setItem(INSTALL_HINT_STORE,"1")}catch(e){}});

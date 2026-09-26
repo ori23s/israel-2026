@@ -8799,7 +8799,7 @@ render();
 languageNoticeOnArrival();
 
 /* Offline copy and home-screen install - see offline/sw.js. */
-const INSTALL_HINT_STORE="ori-guide-install-hint";
+const INSTALL_HINT_STORE="ori-guide-install-hint-2";
 function offlineCopySetup(){
   const secure=location.protocol==="https:"||location.hostname==="localhost";
   if(secure&&"serviceWorker" in navigator){
@@ -8824,7 +8824,7 @@ function offlineCopySetup(){
     const box=document.createElement("div");
     box.className="install-hint";box.setAttribute("role","note");
     const text=document.createElement("p");
-    text.innerHTML="<strong>שמרו את המדריך בטלפון.</strong> הקישו על שיתוף ובחרו בהוספה למסך הבית. מעכשיו הוא ייפתח משם כמו אפליקציה, גם בלי אינטרנט.";
+    text.innerHTML="<strong>שמרו את המדריך בטלפון, גם בלי אינטרנט.</strong> הקישו על שיתוף ובחרו בהוספה למסך הבית. אם מופיע מתג לפתיחה כאפליקציה (<em>Open as Web App</em>), כבו אותו לפני שמוסיפים. הגרסה האנגלית נשמרת יחד איתו. פתחו אותו מדי פעם, והטלפון ישמור את העותק.";
     const ok=document.createElement("button");
     ok.type="button";ok.textContent="הבנתי";
     ok.addEventListener("click",()=>{box.remove();try{localStorage.setItem(INSTALL_HINT_STORE,"1")}catch(e){}});
