@@ -2471,6 +2471,10 @@ function setLandscapeSubject(subjectId){
   /* Same as the chapter navigator: replace the panel, leave the page alone. */
   const subjectSlot=document.getElementById("landscapeSubjectContent");
   const subjectNav=document.querySelector(".landscape-subject-selector");
+  /* Every layer is rendered, visible or not, so a slot being present does not mean it is on
+     screen. From another layer, switch to this one the way the layer bar does. */
+  const subjectLayer=subjectSlot&&subjectSlot.closest(".layer");
+  if(subjectLayer&&!subjectLayer.classList.contains("active")){setLandscapeLayer("understand",subjectId);return}
   if(subjectSlot&&subjectNav){
     subjectSlot.innerHTML=renderLandscapeSubject(subjectId);
     subjectNav.querySelectorAll("button[data-subject]").forEach(b=>{
@@ -2495,6 +2499,8 @@ function setLandscapeEra(eraId){
   /* Swap this chapter's content rather than rebuilding the screen around it. */
   const eraSlot=document.getElementById("landscapeEraContent");
   const eraNav=document.querySelector(".landscape-era-selector");
+  const eraLayer=eraSlot&&eraSlot.closest(".layer");
+  if(eraLayer&&!eraLayer.classList.contains("active")){setLandscapeLayer("deep",eraId);return}
   if(eraSlot&&eraNav){
     eraSlot.innerHTML=renderLandscapeEra(eraId);
     eraNav.querySelectorAll("button[data-era]").forEach(b=>{
@@ -2523,8 +2529,6 @@ function goBack(){if(window.history.length>1)window.history.back();else navigate
 function setPartyLayer(layer){
   if(!current.startsWith("party:"))return;
   partyLayerState=["quick","understand","deep"].includes(layer)?layer:"quick";
-  if(partyLayerState==="understand")partyUnderstandState="identity";
-  if(partyLayerState==="deep")partyDeepState="overview";
   const bar=document.querySelector(".screen.active .layerbar");
   const layers=document.querySelectorAll(".screen.active .layer");
   if(bar&&layers.length===3){
@@ -2535,6 +2539,10 @@ function setPartyLayer(layer){
     if(location.hash!==h2)history.replaceState(null,"",h2);
     return;
   }
+  /* Only a re-render starts the layer at its first tab or at the Deep overview. Switching in
+     place shows the layer as it was left, so the address must keep naming that tab or section. */
+  if(partyLayerState==="understand")partyUnderstandState="identity";
+  if(partyLayerState==="deep")partyDeepState="overview";
   preserveScrollOnNextHash=true;
   const hash=stateToHash(current);
   if(location.hash===hash)render({preserveScroll:true});else location.hash=hash;
@@ -18593,6 +18601,8 @@ function checkerJump(id){const el=document.getElementById(id);if(el)el.scrollInt
 function renderCheckerResult(){
   const f=checkerFindings();
   const gaps=checkerGaps();
+  /* The Tensions jump lands on the first of its two sections that is on the page. */
+  const tensionsAt=f.some(x=>x.kind==="conflict")?"conflict":"threshold";
   const started=checkerAnsweredList().length||checker.leaning||checker.government||(checker.redLines||[]).length;
   if(!started)return `<div class="card"><h2>Nothing to work with yet</h2>
     <p>Answer a few questions and this page fills up.</p>
@@ -18613,7 +18623,7 @@ function renderCheckerResult(){
       ${nav?`<div class="checker-resultnav">${nav}</div>`:""}</div>
     ${renderCheckerAnswers()}
     ${groups.map(([k,label])=>{const items=f.filter(x=>x.kind===k);
-      return items.length?`<section class="checker-section" ${k==="conflict"?'id="ck-tensions"':""}><h2>${esc(label)}</h2>${items.map(checkerFindingCard).join("")}</section>`:""}).join("")}
+      return items.length?`<section class="checker-section" ${k===tensionsAt?'id="ck-tensions"':""}><h2>${esc(label)}</h2>${items.map(checkerFindingCard).join("")}</section>`:""}).join("")}
     ${gaps.length?`<div class="card checker-gaps"><div class="eyebrow">What I still do not know about you</div>
       <p>This is only as good as what you told me. It does not yet know ${gaps.map(esc).join("; ")}.</p>
       <button class="secondary" onclick="checkerGo('start')">Answer more&nbsp;→</button></div>`:""}
