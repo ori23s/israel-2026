@@ -6,9 +6,16 @@
    answered within a few seconds - and even then the fresh copy is still fetched and saved for the
    next visit. Nothing here talks to any server but this site's own.
 
-   Cloudflare serves the Hebrew page at /he and redirects /he.html there, so every spelling of a
-   page is saved under one key. A redirected response cannot be handed to a navigation (Safari
-   refuses it), so it is copied into a plain one first. */
+   Cloudflare serves the pages at / and /he and redirects /index.html, /he.html and /he/ to them
+   (308). The worker does the same, before anything else, online or offline: a navigation to one of
+   those spellings is answered with a redirect to the page's own address, and the browser then
+   comes back for that address. So a page is only ever shown at / or /he - never at /he/, where the
+   language button's relative link would resolve to /he/index.html and loop on the English page -
+   and the network-first fetch below always asks for the real page, not for a redirect. (A
+   navigation fetch does not follow redirects: it gets an opaque redirect, which is not "ok", and
+   before V182 that meant the saved copy was served and never refreshed.) The browser keeps the
+   #route across the redirect. A redirected response cannot be handed to a navigation (Safari
+   refuses it), so one from install or fillMissing is copied into a plain one first. */
 
 const CACHE = "ori-guide-offline-1";
 const ASSETS = [
@@ -89,11 +96,17 @@ self.addEventListener("fetch", event => {
   if (url.origin !== self.location.origin) return;
 
   const key = req.mode === "navigate" ? pageKey(url) : null;
+  if (key && url.pathname !== key) {
+    event.respondWith(Response.redirect(url.origin + key + url.search, 308));
+    return;
+  }
   if (key) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       const saved = await cache.match(key);
       const fresh = fetch(req).then(async res => {
+        // The site moved the page: let the browser follow, and keep the saved copy as it is.
+        if (res.type === "opaqueredirect") return res;
         if (!res.ok) return saved || res;
         const copy = await plain(res);
         await cache.put(key, copy.clone());
