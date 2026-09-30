@@ -2154,6 +2154,10 @@ function guideSearchFocusable(){
   return [...document.querySelectorAll("#guideSearchPanel button,#guideSearchPanel input,#guideSearchPanel a[href]")].filter(el=>!el.disabled&&!el.closest("[inert]"));
 }
 function openGuideSearch(){
+  showGuideSearch();
+  overlayEnter("search",null);
+}
+function showGuideSearch(){
   lastGuideSearchFocus=document.activeElement;
   const overlay=document.getElementById("guideSearchOverlay");
   const panel=document.getElementById("guideSearchPanel");
@@ -2165,7 +2169,8 @@ function openGuideSearch(){
   const input=document.getElementById("guideSearchInput");
   setTimeout(()=>{input.focus();input.select()},0);
 }
-function closeGuideSearch(){
+function closeGuideSearch(keepHistory=false){
+  keepHistory=keepHistory===true;
   const overlay=document.getElementById("guideSearchOverlay");
   const panel=document.getElementById("guideSearchPanel");
   if(!overlay||!panel)return;
@@ -2177,12 +2182,13 @@ function closeGuideSearch(){
   panel.inert=true;
   if(wasOpen&&lastGuideSearchFocus&&document.contains(lastGuideSearchFocus))lastGuideSearchFocus.focus();
   lastGuideSearchFocus=null;
+  if(wasOpen&&!keepHistory)overlayLeave("search");
 }
 function openGuideSearchResultEncoded(payload){
   let target=null;
   try{target=JSON.parse(decodeURIComponent(payload))}catch{return}
   if(!target||!target.type)return;
-  closeGuideSearch();
+  closeGuideSearch(true);
 
   if(target.type==="party"){
     const i=partyIndexById(target.partyId);
@@ -2248,7 +2254,16 @@ function personSubviewHash(i){
   const personId=PEOPLE[i]?.personId||"";
   return personTabState?`#person/${personId}/${personTabState}`:`#person/${personId}`;
 }
-function compareCategorySlug(category){return slugify(category)}
+/* V185: a Compare address names a category by an ASCII key that is the same in both editions.
+   slugify() keeps only a-z0-9, so a Hebrew category name slugged to "" and the category was lost.
+   The key is the English slug the address has always carried, found through an issue in that
+   category (issue ids are never translated); a category without one uses its first issue's id. */
+const COMPARE_CATEGORY_KEYS=[["security-war","gaza_postwar"],["institutions-democracy","oct7_inquiry"],["religion-state","national_service"],["palestinians-territory","territories"],["economy-cost-of-living","economy"],["society-civil-rights","arab_citizens"]];
+function compareCategorySlug(category){
+  const known=COMPARE_CATEGORY_KEYS.find(([,issueId])=>issueById(issueId)?.category===category);
+  if(known)return known[0];
+  return ISSUE_CATALOG.find(issue=>issue.category===category)?.issueId||slugify(category);
+}
 function compareScopeHashParts(){
   if(compareIssueScope==="all")return ["scope","all"];
   if(compareIssueScope.startsWith("category:")){
@@ -2264,7 +2279,7 @@ function compareScopeFromHash(parts){
   if(kind==="all")return {scope:"all",partyParts};
   if(kind==="category"){
     const slug=parts[scopeIndex+2]||"";
-    const category=[...new Set(ISSUE_CATALOG.map(issue=>issue.category))].find(c=>compareCategorySlug(c)===slug);
+    const category=slug?[...new Set(ISSUE_CATALOG.map(issue=>issue.category))].find(c=>compareCategorySlug(c)===slug||slugify(c)===slug):null;
     return {scope:category?`category:${category}`:"key",partyParts};
   }
   return {scope:"key",partyParts};
@@ -2295,6 +2310,7 @@ function stateToHash(state){
     return "#compare/"+[...parties,...compareScopeHashParts()].join("/");
   }
   if(state==="election-now")return "#election-now/"+electionNowView;
+  if(state==="checker")return checkerStepHash();
   return "#"+state;
 }
 function hashToState(hash){
@@ -2375,18 +2391,65 @@ function hashToState(hash){
     return "election-now";
   }
 
+  if(parts[0]==="checker"){checkerStepFromHash(parts);return "checker"}
+
   // #guide was merged into #home in V93. Existing links still resolve.
   if(parts[0]==="guide")return "home";
   const allowed=new Set(["home","landscape","election","parties","people","issues","compare","election-now","take","checker"]);
   return allowed.has(parts[0])?parts[0]:"home";
 }
+/* V185: history. Every entry the guide makes carries oriSeq, its position in this visit: 0 for
+   the entry the reader arrived on, one more for each entry after it. An entry above 0 therefore
+   has one of the guide's own below it, which is what the in-app Back button needs to know -
+   history.length also counts the sites visited before the guide. A drawer or the search panel
+   adds an entry of its own at the same address (oriOverlay, with the drawer's content), so Back
+   closes it and stays on the page. */
+let navSeq=0;
+function routeState(){
+  const s=history.state||{};
+  const keep={oriSeq:navSeq};
+  if(s.oriOverlay){keep.oriOverlay=s.oriOverlay;keep.oriOverlayContent=s.oriOverlayContent||null}
+  return keep;
+}
+function routeReplace(hash){history.replaceState(routeState(),"",hash)}
+function routePush(hash,extra){navSeq+=1;history.pushState(Object.assign({oriSeq:navSeq},extra||{}),"",hash)}
+function syncNavSeq(){
+  const s=history.state;
+  if(s&&typeof s.oriSeq==="number"){navSeq=s.oriSeq;return}
+  navSeq+=1;
+  history.replaceState(Object.assign({},s||{},{oriSeq:navSeq}),"",location.href);
+}
+function overlayOpen(kind){
+  const el=document.getElementById(kind==="drawer"?"infoDrawer":"guideSearchPanel");
+  return !!(el&&el.classList.contains("open"));
+}
+function overlayEnter(kind,content){
+  /* The issue page's party drawer has an address of its own (#issue/<id>/<party>). */
+  if(kind==="drawer"&&current.startsWith("issue:")&&issueDrawerPartyState)return;
+  const s=history.state||{};
+  if(s.oriIssueDrawer)return;
+  if(s.oriOverlay===kind){history.replaceState(Object.assign({},s,{oriOverlayContent:content||null}),"",location.href);return}
+  routePush(location.hash||"#home",{oriOverlay:kind,oriOverlayContent:content||null});
+}
+/* Closed by the reader (Close, the backdrop, Escape): take its entry off again. */
+function overlayLeave(kind){if(history.state?.oriOverlay===kind)history.back()}
+/* Back or Forward landed on an entry: show the drawer or search panel it had, and no other. */
+function applyOverlayForEntry(){
+  const s=history.state||{};
+  if(s.oriOverlay!=="search"&&overlayOpen("search"))closeGuideSearch(true);
+  if(s.oriOverlay!=="drawer"&&!s.oriIssueDrawer&&overlayOpen("drawer")&&!(current.startsWith("issue:")&&issueDrawerPartyState)){
+    suppressDrawerStateSync=true;closeDrawer(true);suppressDrawerStateSync=false;
+  }
+  if(s.oriOverlay==="drawer"&&!overlayOpen("drawer")&&s.oriOverlayContent)showDrawer(s.oriOverlayContent.kicker,s.oriOverlayContent.html);
+  if(s.oriOverlay==="search"&&!overlayOpen("search"))showGuideSearch();
+}
 function navigateState(state,replace=false){
   const hash=stateToHash(state);
   current=state;
-  closeGuideSearch();
+  closeGuideSearch(true);
   closeMobileNav();
   if(location.hash===hash){render();return}
-  if(replace)history.replaceState(null,"",hash);
+  if(replace)routeReplace(hash);
   else location.hash=hash;
 }
 function go(id){navigateState(id)}
@@ -2417,7 +2480,7 @@ function setLandscapeLayer(layer,focus=null){
     layers.forEach((el,k)=>{el.innerHTML=html[k];el.classList.toggle("active",order[k]===layer)});
     bar.querySelectorAll(".layerbtn").forEach((b,k)=>b.classList.toggle("active",order[k]===layer));
     const h=landscapeSubviewHash();
-    if(location.hash!==h)history.replaceState(null,"",h);
+    if(location.hash!==h)routeReplace(h);
     const target=landscapeScrollTarget&&document.getElementById(landscapeScrollTarget);
     if(target)target.scrollIntoView({block:"start"});
     const a=document.activeElement;
@@ -2453,7 +2516,7 @@ function setLandscapeSubject(subjectId){
       b.setAttribute("aria-current",on?"page":"false");
     });
     const h=landscapeSubviewHash();
-    if(location.hash!==h)history.replaceState(null,"",h);
+    if(location.hash!==h)routeReplace(h);
     return;
   }
   const hash=landscapeSubviewHash();
@@ -2479,7 +2542,7 @@ function setLandscapeEra(eraId){
       b.setAttribute("aria-current",on?"page":"false");
     });
     const h=landscapeSubviewHash();
-    if(location.hash!==h)history.replaceState(null,"",h);
+    if(location.hash!==h)routeReplace(h);
     return;
   }
   const hash=landscapeSubviewHash();
@@ -2495,7 +2558,8 @@ function goPerson(i){
   personTabState=null;
   navigateState("person:"+i);
 }
-function goBack(){if(window.history.length>1)window.history.back();else navigateState("home",true)}
+/* V185: back to the guide's previous entry, never out of the site. */
+function goBack(){if(navSeq>0)window.history.back();else navigateState("home")}
 function setPartyLayer(layer){
   if(!current.startsWith("party:"))return;
   partyLayerState=["quick","understand","deep"].includes(layer)?layer:"quick";
@@ -2506,7 +2570,7 @@ function setPartyLayer(layer){
     const order=["quick","understand","deep"];
     layers.forEach((el,k)=>el.classList.toggle("active",order[k]===partyLayerState));
     const h2=stateToHash(current);
-    if(location.hash!==h2)history.replaceState(null,"",h2);
+    if(location.hash!==h2)routeReplace(h2);
     requestAnimationFrame(revealActivePills);
     return;
   }
@@ -3520,7 +3584,7 @@ function openUnderstandIssueEncoded(payload){
     </div>
     <div class="drawer-actions">
       <button class="primary go-deeper" onclick="goDeeperIssueEncoded('${researchPayload(party,id)}')">לעומק&nbsp;←</button>
-      ${issueById(id)?`<button class="secondary" onclick="closeDrawer();goIssue('${id}')">למפלגות האחרות בסוגיה הזו&nbsp;←</button>`:""}
+      ${issueById(id)?`<button class="secondary" onclick="closeDrawer(true);goIssue('${id}')">למפלגות האחרות בסוגיה הזו&nbsp;←</button>`:""}
     </div>
   `);
 }
@@ -3546,11 +3610,11 @@ function openDeepIssueEncoded(payload){
       ${renderDossierBlock("מה עדיין לא ברור",issue.uncertainty,"unclear-block")}
     </div>
     ${renderSources(issue.evidence||[])}
-    ${issueById(id)?`<div class="drawer-actions"><button class="secondary" onclick="closeDrawer();goIssue('${id}')">למפלגות האחרות בסוגיה הזו&nbsp;←</button></div>`:""}
+    ${issueById(id)?`<div class="drawer-actions"><button class="secondary" onclick="closeDrawer(true);goIssue('${id}')">למפלגות האחרות בסוגיה הזו&nbsp;←</button></div>`:""}
   `);
 }
 function goDeeperIssueEncoded(payload){
-  closeDrawer();
+  closeDrawer(true);
   document.querySelectorAll(".layerbtn").forEach(x=>x.classList.toggle("active",x.dataset.layer==="deep"));
   document.querySelectorAll(".layer").forEach(x=>x.classList.toggle("active",x.id==="layer-deep"));
   setDeepSixTab("policy");
@@ -3780,14 +3844,14 @@ function openResearchCandidateEncoded(payload){
   const c=currentPartyContext(party).candidateList?.[index];
   if(!c) return;
   const person=c.personId?personIndexById(c.personId):-1;
-  openDrawer("מועמד",`<div class="eyebrow">${esc(partyName(party))} · מקום ${esc(c.pos)} ברשימה</div><h2>${esc(c.name)}</h2><p><strong>${esc(c.role||"")}</strong></p>${c.why?`<div class="note"><strong>למה הדמות הזו חשובה</strong><br>${esc(c.why)}</div>`:""}${c.background?`<h3>רקע</h3><p>${esc(c.background)}</p>`:""}${c.primary?`<h3>רשימת 2026</h3><p>${esc(c.primary)}</p>`:""}${person>=0?`<button class="primary" onclick="closeDrawer();goPerson(${person})">לפרופיל האישי&nbsp;←</button>`:""}`);
+  openDrawer("מועמד",`<div class="eyebrow">${esc(partyName(party))} · מקום ${esc(c.pos)} ברשימה</div><h2>${esc(c.name)}</h2><p><strong>${esc(c.role||"")}</strong></p>${c.why?`<div class="note"><strong>למה הדמות הזו חשובה</strong><br>${esc(c.why)}</div>`:""}${c.background?`<h3>רקע</h3><p>${esc(c.background)}</p>`:""}${c.primary?`<h3>רשימת 2026</h3><p>${esc(c.primary)}</p>`:""}${person>=0?`<button class="primary" onclick="closeDrawer(true);goPerson(${person})">לפרופיל האישי&nbsp;←</button>`:""}`);
 }
 function openResearchPersonEncoded(payload){
   const {party,index}=JSON.parse(decodeURIComponent(payload));
   const r=researchByPartyId(party), x=r?.deep?.people?.[index];
   if(!x) return;
   const person=x.personId?personIndexById(x.personId):-1;
-  openDrawer("דמות להכיר",`<div class="eyebrow">${esc(partyName(party))}</div><h2>${esc(x.name)}</h2><p><strong>${esc(x.role||"")}</strong></p>${x.why?`<div class="note"><strong>למה הדמות הזו חשובה</strong><br>${esc(x.why)}</div>`:""}${x.background?`<h3>רקע</h3><p>${esc(x.background)}</p>`:""}${person>=0?`<button class="primary" onclick="closeDrawer();goPerson(${person})">לפרופיל האישי&nbsp;←</button>`:""}`);
+  openDrawer("דמות להכיר",`<div class="eyebrow">${esc(partyName(party))}</div><h2>${esc(x.name)}</h2><p><strong>${esc(x.role||"")}</strong></p>${x.why?`<div class="note"><strong>למה הדמות הזו חשובה</strong><br>${esc(x.why)}</div>`:""}${x.background?`<h3>רקע</h3><p>${esc(x.background)}</p>`:""}${person>=0?`<button class="primary" onclick="closeDrawer(true);goPerson(${person})">לפרופיל האישי&nbsp;←</button>`:""}`);
 }
 function directPeople(r,partyId){
   if((r.deep.people||[]).length) return r.deep.people.map((x,i)=>({...x,_direct:true,_index:i}));
@@ -3999,6 +4063,10 @@ function drawerFocusable(){
     .filter(el=>!el.disabled&&el.offsetParent!==null);
 }
 function openDrawer(kicker, html){
+  showDrawer(kicker,html);
+  overlayEnter("drawer",{kicker,html});
+}
+function showDrawer(kicker, html){
   lastDrawerFocus=document.activeElement;
   const overlay=document.getElementById("drawerOverlay");
   const drawer=document.getElementById("infoDrawer");
@@ -4014,7 +4082,10 @@ function openDrawer(kicker, html){
     first.focus();
   });
 }
-function closeDrawer(){
+/* keepHistory: the caller is about to navigate, so the drawer's entry stays and Back from the
+   next page comes back to it. */
+function closeDrawer(keepHistory=false){
+  keepHistory=keepHistory===true;
   const drawer=document.getElementById("infoDrawer");
   const wasOpen=drawer.classList.contains("open");
   document.getElementById("drawerOverlay").classList.remove("open");
@@ -4024,13 +4095,15 @@ function closeDrawer(){
   drawer.inert=true;
   if(wasOpen&&lastDrawerFocus&&document.contains(lastDrawerFocus))lastDrawerFocus.focus();
   lastDrawerFocus=null;
-  if(!suppressDrawerStateSync&&issueDrawerPartyState&&current.startsWith("issue:")){
+  if(!keepHistory&&!suppressDrawerStateSync&&issueDrawerPartyState&&current.startsWith("issue:")){
     const issueId=current.slice(6);
     const wasApplicationPush=history.state?.oriIssueDrawer===true&&history.state?.issueId===issueId;
     issueDrawerPartyState=null;
     if(wasApplicationPush){history.back();return}
-    history.replaceState(null,"",stateToHash(current));
+    routeReplace(stateToHash(current));
+    return;
   }
+  if(wasOpen&&!keepHistory&&!suppressDrawerStateSync)overlayLeave("drawer");
 }
 function personPayload(person,index){
   return encodeURIComponent(JSON.stringify({person,index})).replace(/'/g,"%27");
@@ -4193,7 +4266,7 @@ function setPersonTab(name){
   document.querySelectorAll(".person-deep-tabs .profile-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
   document.querySelectorAll(".profile-panel").forEach(panel=>panel.classList.toggle("active",panel.id==="profile-"+name));
   const hash=stateToHash(current);
-  if(location.hash!==hash)history.replaceState(null,"",hash);
+  if(location.hash!==hash)routeReplace(hash);
 }
 
 function renderPersonMetadata(p){
@@ -4458,7 +4531,7 @@ function openIssuePartyDossier(partyId,issueId,syncDirect=true){
     preserveScrollOnNextHash=true;
     const hash=stateToHash(current);
     if(location.hash!==hash){
-      history.pushState({oriIssueDrawer:true,issueId,partyId},"",hash);
+      routePush(hash,{oriIssueDrawer:true,issueId,partyId});
       openIssuePartyDossier(partyId,issueId,false);
       return;
     }
@@ -4650,7 +4723,7 @@ function compareIssuesForScope(){
 function setCompareIssueScope(scope){
   compareIssueScope=scope;
   if(current==="compare"){
-    history.replaceState(null,"",stateToHash("compare"));
+    routeReplace(stateToHash("compare"));
   }
   rerenderInPlace();
 }
@@ -4934,7 +5007,7 @@ function buildFromPoll(){
   customSourcePollId=null;
   electionNowView="coalition";
   const hash="#election-now/coalition";
-  if(location.hash!==hash)history.pushState(null,"",hash);
+  if(location.hash!==hash)routePush(hash);
   current="election-now";
   rerenderInPlace();
 }
@@ -5224,7 +5297,7 @@ function pollAnchorNote(){
   return `<div class="note poll-anchor-note">${outlier
     ?`${outlier} הפער הזה אינו טעות ספירה — כל גוף סוקר מדגם משלו ומשקלל אותו לפי מודל משלו של מי באמת יצביע, ולכן זו אי-הסכמה על מי הוא ציבור הבוחרים הישראלי ולא על אריתמטיקה.`
     :`<strong>הגופים חלוקים על מי הוא ציבור הבוחרים.</strong> ${blocSpreadFact()}`}
-    המדריך קורא את הבחירות לפי <strong>${esc(outlet)}</strong>, שנמצא בתוך האשכול המרכזי. כל ${count} הסקרים כאן — שנו את זה שלמעלה וכל מספר מנדטים במדריך ישתנה בעקבותיו.</div>`;
+    המדריך קורא את הבחירות לפי <strong>${esc(outlet)}</strong>, שנמצא בתוך האשכול המרכזי. כל ${count} הסקרים כאן — שנו את זה שלמעלה ומספרי המנדטים ברחבי המדריך ישתנו בעקבותיו, מלבד שני מקומות שנשארים על ${esc(outlet)} בכוונה: השורה בראש דף הבית, וקריאות המנדטים ואחוז החסימה של מבחן העמדות עצמו.</div>`;
 }
 function renderPollsAndBlocs(){
   const poll=selectedPoll();
@@ -6222,6 +6295,7 @@ function renderCustomSeatControls(){
         </div>
       </div>`;
     }).join("")}
+    </div>
   </div>`;
 }
 let politicalMapParty="yisrael_beytenu";
@@ -7488,7 +7562,32 @@ function checkerHasAnswers(){return Object.keys(checker.answers||{}).length>0||!
 function checkerForget(){checker=JSON.parse(JSON.stringify(CHECKER_BLANK));
   try{localStorage.removeItem(CHECKER_STORE)}catch(e){}rerenderInPlace()}
 let checkerFocusPending=false;
-function checkerGo(step){checker.step=step;if(step==="questions")checker.qIndex=0;checkerSave();checkerFocusPending=true;rerenderInPlace()}
+function checkerGo(step){checker.step=step;if(step==="questions")checker.qIndex=0;checkerSave();checkerShowStep()}
+/* V185: every step has its own address, so Back and Forward move between steps:
+   #checker (start), #checker/leaning, #checker/reasons, #checker/questions/<n>,
+   #checker/government, #checker/redlines, #checker/result. */
+function checkerStepHash(){
+  const s=CHECKER_STEPS.includes(checker.step)?checker.step:"start";
+  if(s==="start")return "#checker";
+  if(s==="questions")return "#checker/questions/"+((checker.qIndex|0)+1);
+  return "#checker/"+s;
+}
+function checkerShowStep(){
+  checkerFocusPending=true;
+  const hash=checkerStepHash();
+  if(current==="checker"&&location.hash!==hash){preserveScrollOnNextHash=true;location.hash=hash;return}
+  rerenderInPlace();
+}
+/* A deep link opens its step with the answers saved in this browser. A step those answers could
+   not have reached opens the start instead, and render() corrects the address. */
+function checkerStepFromHash(parts){
+  let step=CHECKER_STEPS.includes(parts[1])?parts[1]:"start";
+  if(step!=="start"&&step!=="result"&&!checker.path)step="start";
+  if(!checkerVisible(step))step="start";
+  checker.step=step;
+  const n=parseInt(parts[2],10), total=checkerQuestions().length;
+  checker.qIndex=step==="questions"&&n>=1?Math.min(n,total)-1:0;
+}
 function checkerSet(field,value){
   checker[field]=(checker[field]===value&&field!=="step"&&field!=="tested")?null:value;
   checkerSave(); checkerPaint();
@@ -7735,10 +7834,13 @@ function checkerFindings(){
   checkerAnsweredGroups().forEach(({q,os})=>{
     if(os.every(o=>o.readerOnly))return; // the reader said this question would not decide their vote
     const none=(q.noPosition||[]).filter(p=>p===checker.leaning);
+    /* V185: noPosition is per question, so the card is about the question - the party may hold
+       researched positions elsewhere on the same issue. */
+    const answered=os.filter(o=>!o.readerOnly).map(o=>o.label).join("; ");
     none.forEach(p=>f.push(checkerFinding("uncertainty",
-      `ל${partyName(p)} אין עמדה מתועדת בנושא ${issueTitle(q.issueId)}`,
-      `עניתם על השאלה ״${q.question}״. המחקר על ${partyName(p)} אינו מתעד עמדה בשאלה הזו, לא מוצהרת ולא משתמעת.`,
-      {partyId:p,issueId:q.issueId,severity:"medium"})));
+      `״${q.question}״`,
+      `התשובה שלכם: ${answered}. המחקר על ${partyName(p)} אינו מתעד עמדה בשאלה הזו, לא מוצהרת ולא משתמעת.`,
+      {partyId:p,issueId:q.issueId,questionId:q.id,severity:"medium"})));
   });
 
   const order={high:0,medium:1,info:2};
@@ -7780,7 +7882,7 @@ function checkerQStep(d){
   const qs=checkerQuestions(), next=(checker.qIndex|0)+d;
   if(next<0)return checkerBack();
   if(next>=qs.length)return checkerAdvance();
-  checker.qIndex=next; checkerSave(); checkerFocusPending=true; rerenderInPlace();
+  checker.qIndex=next; checkerSave(); checkerShowStep();
 }
 function checkerAdvance(){const i=CHECKER_STEPS.indexOf(checker.step);
   for(let j=i+1;j<CHECKER_STEPS.length;j++)if(checkerVisible(CHECKER_STEPS[j]))return checkerGo(CHECKER_STEPS[j]);
@@ -7955,7 +8057,7 @@ function checkerFindingCard(x){
   const link=x.partyId&&partyIndexById(x.partyId)>=0
     ?`<button class="person-link" onclick="goParty(${partyIndexById(x.partyId)})">לעמוד של ${esc(partyName(x.partyId))}&nbsp;←</button>`:"";
   const dossier=x.issueId&&x.partyId&&partyIndexById(x.partyId)>=0
-    ?`<button class="person-link" onclick="openIssuePartyDossier('${esc(x.partyId)}','${esc(x.issueId)}',false)">${esc(partyName(x.partyId))} בנושא ${esc(issueTitle(x.issueId))}&nbsp;←</button>`:"";
+    ?`<button class="person-link" onclick="openIssuePartyDossier('${esc(x.partyId)}','${esc(x.issueId)}',false)">${x.kind==="uncertainty"?`מה המחקר כן מתעד על ${esc(partyName(x.partyId))} בנושא ${esc(issueTitle(x.issueId))}`:`${esc(partyName(x.partyId))} בנושא ${esc(issueTitle(x.issueId))}`}&nbsp;←</button>`:"";
   return `<div class="checker-finding ${esc(x.kind)} sev-${esc(x.severity||"medium")}">
     <h3>${escBidi(x.title)}</h3><p>${escBidi(x.body)}</p>
     <div class="checker-finding-links">${dossier}${link}</div>${src}</div>`;
@@ -8184,6 +8286,7 @@ function render(options={}){
   const landscapeTarget=landscapeScrollTarget;
   landscapeScrollTarget=null;
   lastRenderedRoute=current;
+  if(current==="checker"){const h=checkerStepHash();if(location.hash!==h)routeReplace(h)}
   const checkerStep=checkerFocusPending&&current==="checker";
   checkerFocusPending=false;
   requestAnimationFrame(()=>{
@@ -8999,9 +9102,9 @@ function focusRouteTransition(){
 }
 document.getElementById("mobileMenu").onclick=()=>sidebar.classList.contains("mobile-open")?closeMobileNav():openMobileNav();
 mobileNavOverlay.onclick=closeMobileNav;
-document.getElementById("drawerClose").onclick=closeDrawer;
-document.getElementById("drawerOverlay").onclick=closeDrawer;
-document.getElementById("guideSearchOverlay").onclick=closeGuideSearch;
+document.getElementById("drawerClose").onclick=()=>closeDrawer();
+document.getElementById("drawerOverlay").onclick=()=>closeDrawer();
+document.getElementById("guideSearchOverlay").onclick=()=>closeGuideSearch();
 window.addEventListener("resize",syncMobileNavAccessibility);
 document.addEventListener("keydown",e=>{
   const drawer=document.getElementById("infoDrawer");
@@ -9053,21 +9156,32 @@ function sameEntityRoute(a,b){
   return a===b&&(a.startsWith("party:")||a.startsWith("person:")||a.startsWith("issue:")||a==="election-now");
 }
 window.addEventListener("hashchange",()=>{
+  syncNavSeq();
   const previous=current;
   const next=hashToState(location.hash);
   current=next;
   suppressDrawerStateSync=true;
-  closeDrawer();
+  closeDrawer(true);
   suppressDrawerStateSync=false;
-  closeGuideSearch();
+  closeGuideSearch(true);
   closeMobileNav();
   const preserve=preserveScrollOnNextHash||sameEntityRoute(previous,next);
   preserveScrollOnNextHash=false;
+  /* A Checker step reached by Back or Forward is a new question: focus goes to it. */
+  if(previous==="checker"&&next==="checker")checkerFocusPending=true;
   render({preserveScroll:preserve});
   if(previous!==next)focusRouteTransition();
+  applyOverlayForEntry();
 });
+/* Back and Forward between entries at the same address (a drawer, the search panel) fire only
+   popstate. */
+window.addEventListener("popstate",()=>{syncNavSeq();applyOverlayForEntry()});
 checkerLoad();
-if(!location.hash){current="home";history.replaceState(null,"","#home")}else current=hashToState(location.hash);
+/* A reload keeps this entry's place in the visit; a new visit starts at 0. A drawer or search panel
+   is not reopened on reload, so this entry forgets it had one. */
+navSeq=typeof history.state?.oriSeq==="number"?history.state.oriSeq:0;
+if(!location.hash)current="home";else current=hashToState(location.hash);
+{const s=Object.assign({},history.state||{},{oriSeq:navSeq});delete s.oriOverlay;delete s.oriOverlayContent;history.replaceState(s,"",location.hash||"#home")}
 SEARCH_INDEX=buildSearchIndex();
 validateDataModel();
 syncMobileNavAccessibility();
