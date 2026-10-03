@@ -811,7 +811,7 @@ button.compare-state-only{cursor:pointer}
 .line-badge.in{background:#eaf7f0;color:#1f6b47}
 .line-badge.line{background:#fdf1d6;color:#7a5412}
 .line-badge.out{background:#eef1f6;color:#4d5868}
-.offlist-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;letter-spacing:.03em;white-space:nowrap;background:#eef1f6;color:#4d5868}
+.offlist-badge,.list-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;letter-spacing:.03em;white-space:nowrap;background:#eef1f6;color:#4d5868}
 .designation-badge{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:2px 7px;max-width:100%;border:1px solid #d3e0f5;background:#f3f7ff;color:#23406b;border-radius:10px;padding:4px 9px;font-size:12px;font-weight:800;overflow-wrap:anywhere}
 .designation-badge small{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#56657c}
 .people-directory-pickers{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;min-width:0}
@@ -7253,7 +7253,7 @@ function candidateHasDetail(c){
    and the designation badges lives in this one object, so the Hebrew edition translates it as a
    unit. */
 const CANDIDATE_LINE_TEXT={
-  filters:[["near","Close to the poll line"],["named","Named for a post"],["notable","Notable party figures"]],
+  filters:[["all","All"],["leaders","PM candidates & leaders"],["named","Named for a post"],["near","Close to the poll line"]],
   partyLabel:"Party",
   partyAll:"All parties",
   badge:{in:"In",line:"On the line",out:"Out"},
@@ -7261,7 +7261,6 @@ const CANDIDATE_LINE_TEXT={
   named:post=>`Named: ${post}`,
   nearExplainer:"Each party's line moves with the poll: a party that wins 20 seats seats the first 20 names on its list. These are the list places where a few thousand votes decide who enters the Knesset. The badges follow the poll selected in the Election Lab, now {{poll}} - in, on the line (within one seat of the last seat) or out.",
   namedExplainer:"People a party, its leader or the person has named for a ministry in the next government. Announced: the party or its leader said it on the record. Self-declared: the person said it. Reported: a news outlet attributed it to sources.",
-  notableExplainer:"V187: the 35 party figures the guide has researched in depth for this election - not only those near the poll line or named for a post, though some are both.",
   offList:"Not on the list",
   groupSeats:(party,seats)=>seats?`${party} · ${seats} seats in this poll`:`${party} · below the threshold in this poll`,
   lineSentence:(poll,party,seats,pos,state)=>seats
@@ -7337,23 +7336,62 @@ function openOffListNotable(partyId,ref){
   const cardSources=c.card?renderSources((c.cardSourceIds||[]).map(sourceId=>({sourceId})),T.cardSources):"";
   openDrawer("Candidate",`<div class="eyebrow">${esc(partyName(partyId))} · ${esc(T.offList)}</div><h2>${esc(c.name)}</h2><p><strong>${esc(c.role||"")}</strong></p>${designationBlock}${cardBlock}${c.background?`<h3>Background</h3><p>${esc(c.background)}</p>`:""}${cardSources}`);
 }
-/* Combine candidateList entries flagged notable with off-list ones, grouped by party in DATA
-   order; the off-list ones are appended to their party's group rather than given one of their own. */
-function notableGroups(){
-  const onList=candidateListPeople(c=>!!c.notable), offList=offListNotablePeople();
-  const partyIds=new Set([...onList.map(x=>x.partyId),...offList.map(x=>x.partyId)]);
-  return DATA.parties.filter(p=>partyIds.has(p.partyId)).map(p=>({
-    partyId:p.partyId,
-    items:[...onList.filter(x=>x.partyId===p.partyId),...offList.filter(x=>x.partyId===p.partyId)]
-  }));
+/* V188: "All" - every person the guide covers, grouped by party in DATA order, each person
+   exactly once. Sources: PEOPLE (profiles), every candidateList entry with a card, a designation
+   or the notable flag, and the off-list people. A list entry whose personId is a profiled person
+   is merged into that person's card rather than given a second one: it opens the profile, and
+   still shows its list place and designation as badges. Order within a party: PM candidate, then
+   leader(s), then by list place (on-list entries not already shown), then off-list, then profiled
+   people with no list place at all (currently one: Moshe Gafni, not on the 2026 UTJ slate). */
+function allPeopleGroups(){
+  const byPersonId=new Map();
+  candidateListPeople(c=>!!c.personId).forEach(x=>byPersonId.set(x.c.personId,x));
+  const items=[];
+  PEOPLE.forEach((p,i)=>{
+    const hit=byPersonId.get(p.personId);
+    items.push({partyId:p.partyId,personIndex:i,c:hit?hit.c:null,index:hit?hit.index:null,
+      _rank:p.pmCandidate?0:isPartyLeaderPerson(p)?1:(hit?2:4),_pos:hit?Number(hit.c.pos):null});
+  });
+  candidateListPeople(c=>!c.personId&&!!(c.card||c.designation||c.notable)).forEach(x=>{
+    items.push({partyId:x.partyId,personIndex:-1,c:x.c,index:x.index,_rank:2,_pos:Number(x.c.pos)});
+  });
+  offListNotablePeople().forEach(x=>{
+    items.push({partyId:x.partyId,personIndex:-1,c:x.c,offList:true,_rank:3,_pos:null});
+  });
+  const order=(a,b)=>a._rank-b._rank||(a._pos||0)-(b._pos||0);
+  const byParty=new Map();
+  items.forEach(it=>{if(!byParty.has(it.partyId))byParty.set(it.partyId,[]);byParty.get(it.partyId).push(it)});
+  const groups=DATA.parties.filter(p=>byParty.has(p.partyId)).map(p=>({partyId:p.partyId,items:byParty.get(p.partyId).sort(order)}));
+  /* Anyone without a party goes in a final group - none today, but a profile or a card need not
+     carry a partyId, so this is not dead code by assumption. */
+  const noParty=items.filter(it=>!it.partyId);
+  if(noParty.length)groups.push({partyId:null,items:noParty.sort(order)});
+  return groups;
 }
-function notablePersonCard(x){return x.offList?offListPersonCard(x):candidatePersonCard(x,false)}
-function renderPeopleNotable(){
-  const T=CANDIDATE_LINE_TEXT, groups=notableGroups();
-  return `<div class="note people-line-explainer">${esc(T.notableExplainer)}</div>
-    ${groups.map(g=>`<section class="people-line-group" data-party="${esc(g.partyId)}">
-      <h3>${esc(partyName(g.partyId))}</h3>
-      <div class="person-grid">${g.items.map(notablePersonCard).join("")}</div>
+/* The merged "All" card: a profiled person opens the profile and also carries their list place
+   and designation as badges; an off-list person keeps the existing off-list card; anyone else
+   (a card/designation/notable list entry with no profile) opens the candidate drawer. */
+function allPersonCard(item){
+  const T=CANDIDATE_LINE_TEXT, c=item.c;
+  if(item.offList)return offListPersonCard(item);
+  const profiled=item.personIndex>=0, p=profiled?PEOPLE[item.personIndex]:null;
+  const pm=profiled&&!!p.pmCandidate, leader=profiled&&isPartyLeaderPerson(p);
+  const name=profiled?p.name:c.name, role=profiled?p.role:c.role;
+  const ref=c?c.candidateRef:(profiled?p.personId:"");
+  const action=profiled?`goPerson(${item.personIndex})`:`openResearchCandidateEncoded('${issuePayload({party:item.partyId,index:item.index})}')`;
+  const search=[name,role,partyName(item.partyId),c?.designation?.post].join(" ").toLowerCase();
+  const badges=`${pm?'<span class="tag">PM candidate</span>':''}${leader&&!pm?'<span class="tag">Party leader</span>':''}${c?.pos?`<span class="list-badge">${esc(T.listPlace(c.pos))}</span>`:""}${renderDesignationBadge(c?.designation)}`;
+  return `<button class="person-card candidate-person-card"${profiled?` data-person-index="${item.personIndex}"`:""} data-party="${esc(item.partyId)}" data-pm="${pm?"true":"false"}" data-leader="${leader?"true":"false"}" data-search="${esc(search)}" data-candidate="${esc(item.partyId)}:${esc(ref)}" onclick="${action}">
+    <strong>${esc(name)}</strong>
+    <div class="role">${esc(partyName(item.partyId))}</div>
+    <div class="line-badges">${badges}</div>
+  </button>`;
+}
+function renderPeopleAll(){
+  const T=CANDIDATE_LINE_TEXT, groups=allPeopleGroups();
+  return `${groups.map(g=>`<section class="people-line-group" data-party="${esc(g.partyId||"")}">
+      <h3>${esc(g.partyId?partyName(g.partyId):"")}</h3>
+      <div class="person-grid">${g.items.map(allPersonCard).join("")}</div>
     </section>`).join("")}
     <p class="people-empty" hidden>${esc(T.none)}</p>`;
 }
@@ -15228,9 +15266,16 @@ function isPartyLeaderPerson(person){
   if(/\b(?:leader|co-leader|chair)\b/i.test(person.role||""))return true;
   return Object.values(PARTY_RESEARCH).some(r=>(r.quick?.leaderPersonIds||[]).includes(person.personId));
 }
+/* V188: the People page used to have seven filters (all/pm/leaders/other, near/named/notable);
+   now it has four (all/leaders/named/near). An old id reaching this function - from a saved
+   filter, a browser history entry or a link built before this build - lands on the tab that
+   covers what it used to show: pm and leaders both move to the merged "PM candidates &
+   leaders" tab; other and notable both move to "All", since "All" is now a superset of what
+   either used to show. */
+const PEOPLE_FILTER_LEGACY={pm:"leaders",leaders:"leaders",other:"all",notable:"all"};
 function setPeopleDirectoryFilter(filter){
-  peopleDirectoryFilter=filter;
-  document.querySelectorAll("[data-people-filter]").forEach(btn=>btn.classList.toggle("active",btn.dataset.peopleFilter===filter));
+  peopleDirectoryFilter=PEOPLE_FILTER_LEGACY[filter]||filter;
+  document.querySelectorAll("[data-people-filter]").forEach(btn=>btn.classList.toggle("active",btn.dataset.peopleFilter===peopleDirectoryFilter));
   applyPeopleDirectoryFilters();
 }
 function setPeopleDirectorySearch(value){
@@ -15240,16 +15285,15 @@ function setPeopleDirectorySearch(value){
 function applyPeopleDirectoryFilters(){
   const partyMatch=el=>peopleDirectoryParty==="all"||el.dataset.party===peopleDirectoryParty;
   const searchMatch=el=>!peopleDirectorySearch||String(el.dataset.search||"").includes(peopleDirectorySearch);
-  const section=["near","named","notable"].includes(peopleDirectoryFilter)?peopleDirectoryFilter:"profiles";
+  const section=["near","named","leaders"].includes(peopleDirectoryFilter)?peopleDirectoryFilter:"all";
   document.querySelectorAll("[data-people-section]").forEach(el=>{el.hidden=el.dataset.peopleSection!==section});
+  /* V188: this selector now matches cards in two places - the "leaders" tab's plain PEOPLE grid
+     (filtered to PM candidates and party leaders) and the "All" tab's merged, per-party cards
+     (never filtered by PM/leader status - "All" means all). */
   document.querySelectorAll(".person-card[data-person-index]").forEach(card=>{
     const isPm=card.dataset.pm==="true";
     const isLeader=card.dataset.leader==="true";
-    const filterMatch=
-      peopleDirectoryFilter==="all" ||
-      (peopleDirectoryFilter==="pm"&&isPm) ||
-      (peopleDirectoryFilter==="leaders"&&isLeader) ||
-      (peopleDirectoryFilter==="other"&&!isPm&&!isLeader);
+    const filterMatch=peopleDirectoryFilter!=="leaders"||isPm||isLeader;
     card.hidden=!(filterMatch&&searchMatch(card)&&partyMatch(card));
   });
   /* V186: the candidate sections filter by party and search the same way; a party group with
@@ -15260,8 +15304,8 @@ function applyPeopleDirectoryFilters(){
     const empty=el.querySelector(".people-empty");
     if(empty)empty.hidden=[...el.querySelectorAll(".candidate-person-card")].some(c=>!c.hidden);
   });
-  const profilesEmpty=document.querySelector('[data-people-section="profiles"] .people-empty');
-  if(profilesEmpty)profilesEmpty.hidden=[...document.querySelectorAll(".person-card[data-person-index]")].some(c=>!c.hidden);
+  const leadersEmpty=document.querySelector('[data-people-section="leaders"] .people-empty');
+  if(leadersEmpty)leadersEmpty.hidden=[...document.querySelectorAll('[data-people-section="leaders"] .person-card[data-person-index]')].some(c=>!c.hidden);
 }
 /* A card for a list entry: the candidate drawer, or the profile page for a profiled person. */
 function candidatePersonCard({partyId,index,c},withLine){
@@ -15292,8 +15336,7 @@ function renderPeopleNamed(){
     <p class="people-empty" hidden>${esc(T.none)}</p>`;
 }
 function renderPeople(){
-  const filters=[["all","All"],["pm","PM Candidates"],["leaders","Party Leaders"],["other","Other Important Figures"]];
-  filters.push(...CANDIDATE_LINE_TEXT.filters);
+  const filters=CANDIDATE_LINE_TEXT.filters;
   const partyPicker=`<label class="party-sort people-party-picker"><span>${esc(CANDIDATE_LINE_TEXT.partyLabel)}</span><select onchange="setPeopleDirectoryParty(this.value)"><option value="all">${esc(CANDIDATE_LINE_TEXT.partyAll)}</option>${DATA.parties.map(p=>`<option value="${esc(p.partyId)}"${peopleDirectoryParty===p.partyId?" selected":""}>${esc(p.name)}</option>`).join("")}</select></label>`;
   const body=`<p class="lead">Explore the political figures who matter most to understanding the 2026 election.</p>
     <div class="people-directory-tools">
@@ -15303,8 +15346,7 @@ function renderPeople(){
     </div>
     <section data-people-section="near" hidden>${renderPeopleNearLine()}</section>
     <section data-people-section="named" hidden>${renderPeopleNamed()}</section>
-    <section data-people-section="notable" hidden>${renderPeopleNotable()}</section>
-    <section data-people-section="profiles">
+    <section data-people-section="leaders" hidden>
     <div class="person-grid">${PEOPLE.map((p,i)=>{
       const r=getPersonResearch(p);
       const leader=isPartyLeaderPerson(p);
@@ -15320,7 +15362,8 @@ function renderPeople(){
       </button>`;
     }).join("")}</div>
     <p class="people-empty" hidden>${esc(CANDIDATE_LINE_TEXT.none)}</p>
-    </section>`;
+    </section>
+    <section data-people-section="all">${renderPeopleAll()}</section>`;
   setTimeout(applyPeopleDirectoryFilters,0);
   return screen("people","People",body);
 }
